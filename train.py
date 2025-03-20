@@ -9,7 +9,7 @@ from torchvision import transforms
 import torch.optim as optim
 from tqdm import tqdm
 
-from Medmamba import VSSM as medmamba  # import model
+from MedMamba import VSSM as medmamba  # import model
 
 # Import MedMNIST datasets - để có sẵn các class dataset
 from medmnist import PathMNIST, ChestMNIST, DermaMNIST, OCTMNIST
