@@ -9,7 +9,7 @@ from torchvision import transforms, datasets
 import torch.optim as optim
 from tqdm import tqdm
 
-from Medmamba import VSSM as medmamba  # import model
+from MedMamba import VSSM as medmamba  # import model
 
 # MedMNIST imports (for medmnist dataset type)
 from medmnist import PathMNIST, ChestMNIST, DermaMNIST, OCTMNIST
