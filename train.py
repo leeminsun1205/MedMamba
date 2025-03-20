@@ -89,14 +89,7 @@ def main():
         validate_dataset = DatasetClass(split="val", download=True, transform=data_transform["val"], size=size)
         print(f"Using MedMNIST dataset: {medmnist_dataset_name.upper()}")
         print("Not saving class_indices.json for MedMNIST.")
-    
-        print("train_dataset.classes:", train_dataset.classes)  # ADD THIS LINE
-    
-        num_classes = len(train_dataset.classes) if hasattr(train_dataset, 'classes') else len(train_dataset.label_names)
-        if not hasattr(train_dataset, 'classes') and not hasattr(train_dataset, 'label_names'):
-            print("Warning: Cannot automatically determine num_classes for MedMNIST. Trying to infer from labels.")
-            num_classes = len(torch.unique(torch.tensor(train_dataset.labels)))
-            print(f"Inferred num_classes from labels: {num_classes}. Please verify.")
+
     else:
         raise ValueError(f"Invalid dataset_type: {args.dataset_type}. Choose 'imagefolder' or 'medmnist'.")
 
@@ -107,11 +100,9 @@ def main():
     if args.dataset_type == 'imagefolder':
         num_classes = len(train_dataset.classes)
     elif args.dataset_type == 'medmnist':
-        num_classes = len(train_dataset.classes) if hasattr(train_dataset, 'classes') else len(train_dataset.label_names)
-        if not hasattr(train_dataset, 'classes') and not hasattr(train_dataset, 'label_names'):
-            print("Warning: Cannot automatically determine num_classes for MedMNIST. Trying to infer from labels.")
-            num_classes = len(torch.unique(torch.tensor(train_dataset.labels)))
-            print(f"Inferred num_classes from labels: {num_classes}. Please verify.")
+        print("Warning: Cannot automatically determine num_classes for MedMNIST. Trying to infer from labels.")
+        num_classes = len(torch.unique(torch.tensor(train_dataset.labels)))
+        print(f"Inferred num_classes from labels: {num_classes}. Please verify.")
     else: # Should not reach here due to argparse choices
         num_classes = None # To satisfy type checker, but logic error if reaches here
 
