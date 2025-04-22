@@ -48,17 +48,22 @@ class NpzDataset(Dataset):
         if self.transform:
             image_tensor = self.transform(pil_image)
         else:
-            image_tensor = torch.from_numpy(np.array(pil_image.convert('RGB'))).permute(2, 0, 1).float() / 255.0
+            # Fallback nếu không có transform (nên có ToTensor trong transform)
+            # Chuyển đổi thủ công sang Tensor RGB float chuẩn
+            if pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+            np_img_rgb = np.array(pil_image, dtype=np.float32)
+            if np_img_rgb.ndim == 2: # Xử lý nếu convert('RGB') vẫn trả về 2D?
+                 np_img_rgb = np.stack([np_img_rgb]*3, axis=-1)
+            image_tensor = torch.from_numpy(np_img_rgb.transpose((2, 0, 1))) / 255.0
 
 
         return image_tensor, torch.tensor(label, dtype=torch.long)
 
     def get_num_classes(self):
-         # Warning: This might load all labels into RAM if called
          unique_labels = np.unique(self.labels)
          return len(unique_labels)
 
     def get_class_to_idx(self):
-         # Warning: This might load all labels into RAM if called
          unique_labels = sorted(np.unique(self.labels))
          return {f"class_{int(i)}": int(i) for i in unique_labels}
