@@ -13,11 +13,15 @@ class NpzDataset(Dataset):
         img_path = os.path.join(self.root_dir, f"{self.split}_images.npy")
         lbl_path = os.path.join(self.root_dir, f"{self.split}_labels.npy")
 
-        self.images = np.load(img_path, mmap_mode='r')
-        self.labels = np.load(lbl_path, mmap_mode='r')
+        self.images = np.load(img_path)
+        self.labels = np.load(lbl_path)
 
-        self.single_label_in_file = (self.labels.ndim == 0)
-        self.squeezable_labels = (self.labels.ndim > 1 and self.labels.shape[1] == 1)
+        if self.labels.ndim > 1 and self.labels.shape[1] == 1:
+             self.labels = self.labels.squeeze(1)
+        elif self.labels.ndim == 0:
+             self.labels = self.labels[np.newaxis]
+
+        self.labels = self.labels.astype(np.int64)
 
 
     def __len__(self):
@@ -25,17 +29,7 @@ class NpzDataset(Dataset):
 
     def __getitem__(self, idx):
         np_image = self.images[idx]
-        label_raw = self.labels[idx]
-
-        label = label_raw
-        if self.squeezable_labels:
-             label = np.squeeze(label_raw, axis=0)
-        elif self.single_label_in_file:
-             pass
-
-
-        label = np.int64(label)
-
+        label = self.labels[idx]
 
         if np_image.ndim == 2:
              pil_image = Image.fromarray(np_image, mode='L')
@@ -48,17 +42,15 @@ class NpzDataset(Dataset):
         if self.transform:
             image_tensor = self.transform(pil_image)
         else:
-            image_tensor = torch.from_numpy(np.array(pil_image.convert('RGB'))).permute(2, 0, 1).float() / 255.0
+             # Nếu không có transform, có thể cần xử lý khác hoặc báo lỗi
+             # Tạm thời trả về PIL image nếu không có transform
+             image_tensor = pil_image
 
-
-        return image_tensor, torch.tensor(label, dtype=torch.long)
+        return image_tensor, label
 
     def get_num_classes(self):
-         # Warning: This might load all labels into RAM if called
-         unique_labels = np.unique(self.labels)
-         return len(unique_labels)
+         return len(np.unique(self.labels))
 
     def get_class_to_idx(self):
-         # Warning: This might load all labels into RAM if called
          unique_labels = sorted(np.unique(self.labels))
-         return {f"class_{int(i)}": int(i) for i in unique_labels}
+         return {f"class_{i}": i for i in unique_labels}
