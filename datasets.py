@@ -18,11 +18,9 @@ class NpzDataset(Dataset):
 
         if self.labels.ndim > 1 and self.labels.shape[1] == 1:
              self.labels = self.labels.squeeze(1)
-        elif self.labels.ndim == 0: # Handle case where labels might be saved as a 0-dim array if only one label exists
+        elif self.labels.ndim == 0:
              self.labels = self.labels[np.newaxis]
 
-
-        # Ensure labels are integer type for CrossEntropyLoss
         self.labels = self.labels.astype(np.int64)
 
 
@@ -30,36 +28,29 @@ class NpzDataset(Dataset):
         return len(self.images)
 
     def __getitem__(self, idx):
-        image = self.images[idx]
+        np_image = self.images[idx]
         label = self.labels[idx]
 
-        # Convert numpy array to PIL Image
-        # Assumes images are stored in HWC format and uint8 type
-        if image.ndim == 2: # Grayscale image
-             image = Image.fromarray(image, mode='L')
-        elif image.ndim == 3:
-             image = Image.fromarray(image, mode='RGB')
+        if np_image.ndim == 2:
+             pil_image = Image.fromarray(np_image, mode='L')
+             pil_image = pil_image.convert('RGB')
+        elif np_image.ndim == 3:
+             pil_image = Image.fromarray(np_image, mode='RGB')
         else:
-            # Handle potential other formats or raise an error
-            # For now, assume HWC or HW
-            raise ValueError(f"Unsupported image dimensions: {image.ndim}")
-
+            raise ValueError(f"Unsupported image dimensions: {np_image.ndim}")
 
         if self.transform:
-            image = self.transform(image)
+            image_tensor = self.transform(pil_image)
+        else:
+             # Nếu không có transform, có thể cần xử lý khác hoặc báo lỗi
+             # Tạm thời trả về PIL image nếu không có transform
+             image_tensor = pil_image
 
-        # Ensure label is a scalar tensor if needed by the loss function later
-        # However, standard CrossEntropyLoss usually handles python int or long tensor directly
-        # label = torch.tensor(label, dtype=torch.long)
-
-
-        return image, label
+        return image_tensor, label
 
     def get_num_classes(self):
-         # Calculate number of classes from unique labels
          return len(np.unique(self.labels))
 
     def get_class_to_idx(self):
-         # Create a basic index mapping for NpzDataset if needed
          unique_labels = sorted(np.unique(self.labels))
-         return {f"class_{i}": i for i in unique_labels} # Map numeric label to "class_X"
+         return {f"class_{i}": i for i in unique_labels}
