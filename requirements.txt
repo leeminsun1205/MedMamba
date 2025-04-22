@@ -2,11 +2,11 @@
 # torch==1.13.0+cu117
 # torchvision==0.14.0+cu117
 # torchaudio==0.13.0+cu117
-torch
+# torch
 torchvision
 torchaudio
 # --extra-index-url https://download.pytorch.org/whl/cu117
---extra-index-url https://download.pytorch.org/whl/cu126
+# --extra-index-url https://download.pytorch.org/whl/cu126
 # Các gói phụ trợ
 packaging
 timm==0.4.12
@@ -16,7 +16,7 @@ yacs
 termcolor
 submitit
 tensorboardX
-triton==2.0.0
+# triton==2.0.0
 scikit-learn
 matplotlib
 thop
