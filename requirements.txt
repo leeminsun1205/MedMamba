@@ -1,12 +1,11 @@
 # PyTorch và các gói liên quan (cần chỉ định index riêng)
-# torch==1.13.0+cu117
-# torchvision==0.14.0+cu117
-# torchaudio==0.13.0+cu117
-# torch
+mamba-ssm
+causal-conv1d>=1.4.0
+triton
+torch
 torchvision
 torchaudio
-# --extra-index-url https://download.pytorch.org/whl/cu117
-# --extra-index-url https://download.pytorch.org/whl/cu126
+--index-url https://download.pytorch.org/whl/cu121
 # Các gói phụ trợ
 packaging
 timm==0.4.12
@@ -16,7 +15,6 @@ yacs
 termcolor
 submitit
 tensorboardX
-# triton==2.0.0
 scikit-learn
 matplotlib
 thop

@@ -12,9 +12,7 @@ from torchvision import transforms, datasets as torchvision_datasets
 import torch.optim as optim
 from tqdm import tqdm
 
-# Assume MedMamba.py exists and contains the VSSM class definition
 from MedMamba import VSSM as medmamba
-# Assume datasets.py exists and contains the NpzDataset class definition
 import datasets as custom_datasets
 
 
@@ -33,8 +31,16 @@ def parse_args():
 def main():
     args = parse_args()
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print("Using {} device.".format(device))
+    if torch.cuda.is_available():
+        num_gpus = torch.cuda.device_count()
+        print(f"Found {num_gpus} GPUs.")
+        device = torch.device("cuda:0")
+    else:
+        num_gpus = 0
+        print("No GPU found, using CPU.")
+        device = torch.device("cpu")
+    print(f"Using {device} as primary device.")
+
 
     data_transform = {
         "train": transforms.Compose([
@@ -58,13 +64,11 @@ def main():
         train_dataset = custom_datasets.NpzDataset(root_dir=args.train_dir, split='train', transform=data_transform["train"])
         num_classes = train_dataset.get_num_classes()
         cla_dict_np = train_dataset.get_class_to_idx()
-        # Convert np.int64 values (if any) to standard Python int for JSON serialization
         cla_dict = {k: int(v) for k, v in cla_dict_np.items()}
     else:
         print(f"Loading training data from ImageFolder: {args.train_dir}")
         train_dataset = torchvision_datasets.ImageFolder(root=args.train_dir, transform=data_transform["train"])
         num_classes = len(train_dataset.classes)
-        # ImageFolder class_to_idx already uses standard Python int for values
         cla_dict = {val: key for key, val in train_dataset.class_to_idx.items()}
 
     if args.num_classes is not None:
@@ -110,6 +114,11 @@ def main():
     net = medmamba(num_classes=num_classes)
     net.to(device)
 
+    if num_gpus > 1:
+        print(f"Using DataParallel for {num_gpus} GPUs.")
+        net = nn.DataParallel(net)
+
+
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.Adam(net.parameters(), lr=args.lr)
 
@@ -129,6 +138,10 @@ def main():
             optimizer.zero_grad()
             outputs = net(images)
             loss = loss_function(outputs, labels)
+
+            if isinstance(net, nn.DataParallel):
+                 loss = loss.mean()
+
             loss.backward()
             optimizer.step()
 
@@ -154,7 +167,11 @@ def main():
 
         if val_accuracy > best_acc:
             best_acc = val_accuracy
-            torch.save(net.state_dict(), save_path)
+            if isinstance(net, nn.DataParallel):
+                state_to_save = net.module.state_dict()
+            else:
+                state_to_save = net.state_dict()
+            torch.save(state_to_save, save_path)
             print(f'New best model saved to {save_path} with accuracy: {best_acc:.3f}')
 
 
