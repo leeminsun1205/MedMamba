@@ -1,7 +1,6 @@
 # PyTorch và các gói liên quan (cần chỉ định index riêng)
 mamba-ssm
 causal-conv1d>=1.4.0
-triton
 torch
 torchvision
 torchaudio
@@ -17,6 +16,7 @@ submitit
 tensorboardX
 scikit-learn
 matplotlib
+triton
 thop
 h5py
 SimpleITK
