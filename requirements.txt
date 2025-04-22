@@ -1,9 +1,12 @@
 # PyTorch và các gói liên quan (cần chỉ định index riêng)
-torch==1.13.0+cu117
-torchvision==0.14.0+cu117
-torchaudio==0.13.0+cu117
---extra-index-url https://download.pytorch.org/whl/cu117
-
+# torch==1.13.0+cu117
+# torchvision==0.14.0+cu117
+# torchaudio==0.13.0+cu117
+torch
+torchvision
+torchaudio
+# --extra-index-url https://download.pytorch.org/whl/cu117
+--extra-index-url https://download.pytorch.org/whl/cu126
 # Các gói phụ trợ
 packaging
 timm==0.4.12
