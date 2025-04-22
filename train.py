@@ -12,7 +12,7 @@ from torchvision import transforms, datasets as torchvision_datasets # Rename im
 import torch.optim as optim
 from tqdm import tqdm
 
-from Medmamba import VSSM as medmamba
+from MedMamba import VSSM as medmamba
 import datasets as custom_datasets # Import the new datasets module
 
 
