@@ -1,4 +1,5 @@
 import time
+import numpy as np
 import math
 from functools import partial
 from typing import Optional, Callable
@@ -9,10 +10,8 @@ import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 from einops import rearrange, repeat
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
-try:
-    from mamba_ssm.ops.selective_scan_interface import selective_scan_fn, selective_scan_ref
-except:
-    pass
+from mamba_ssm.ops.selective_scan_interface import selective_scan_fn, selective_scan_ref
+
 
 # an alternative for mamba_ssm (in which causal_conv1d is needed)
 try:
@@ -38,7 +37,6 @@ def flops_selective_scan_ref(B=1, L=256, D=768, N=16, with_D=True, with_Z=False,
     ignores:
         [.float(), +, .softplus, .shape, new_zeros, repeat, stack, to(dtype), silu] 
     """
-    import numpy as np
     
     # fvcore.nn.jit_handles
     def get_flops_einsum(input_shapes, equation):
