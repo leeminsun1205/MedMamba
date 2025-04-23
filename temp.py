@@ -25,7 +25,7 @@ def parse_args():
     parser.add_argument('--num_classes', type=int, default=None, help='Number of output classes. If None and using NPZ, inferred from data.')
     parser.add_argument('--model_name', type=str, default='Medmamba', help='Model name for saving.')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size.')
-    parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs.')
+    parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs (total epochs to reach).')
     parser.add_argument('--lr', type=float, default=0.0001, help='Learning rate.')
     parser.add_argument('--resume', type=str, default=None, help='Path to checkpoint .pth file to resume training from.')
     return parser.parse_args()
@@ -35,8 +35,8 @@ def main():
     args = parse_args()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(f"Using {device} device.")
     logging.info(f"Using {device} device.")
+    print(f"Using {device} device.")
 
     data_transform = {
         "train": transforms.Compose([
@@ -56,15 +56,15 @@ def main():
                    os.path.exists(os.path.join(args.train_dir, 'train_labels.npy'))
 
     if train_is_npz:
-        print(f"Loading training data from NPZ files in: {args.train_dir}")
         logging.info(f"Loading training data from NPZ files in: {args.train_dir}")
+        print(f"Loading training data from NPZ files in: {args.train_dir}")
         train_dataset = custom_datasets.NpzDataset(root_dir=args.train_dir, split='train', transform=data_transform["train"])
         num_classes = train_dataset.get_num_classes()
         cla_dict_np = train_dataset.get_class_to_idx()
         cla_dict = {k: int(v) for k, v in cla_dict_np.items()}
     else:
-        print(f"Loading training data from ImageFolder: {args.train_dir}")
         logging.info(f"Loading training data from ImageFolder: {args.train_dir}")
+        print(f"Loading training data from ImageFolder: {args.train_dir}")
         train_dataset = torchvision_datasets.ImageFolder(root=args.train_dir, transform=data_transform["train"])
         num_classes = len(train_dataset.classes)
         cla_dict = {val: key for key, val in train_dataset.class_to_idx.items()}
@@ -72,16 +72,18 @@ def main():
     if args.num_classes is not None:
          if train_is_npz and args.num_classes != num_classes:
               logging.warning(f"Warning: --num_classes ({args.num_classes}) overrides inferred classes ({num_classes}) from NPZ.")
+              print(f"Warning: --num_classes ({args.num_classes}) overrides inferred classes ({num_classes}) from NPZ.")
          num_classes = args.num_classes
     elif num_classes is None:
          logging.error("Error: Could not determine number of classes and --num_classes not specified.")
+         print("Error: Could not determine number of classes and --num_classes not specified.")
          sys.exit(1)
 
     train_num = len(train_dataset)
 
     class_indices_path = 'class_indices.json'
-    print(f"Saving class indices to {class_indices_path}")
     logging.info(f"Saving class indices to {class_indices_path}")
+    print(f"Saving class indices to {class_indices_path}")
     with open(class_indices_path, 'w') as json_file:
         json.dump(cla_dict, json_file, indent=4)
 
@@ -89,31 +91,30 @@ def main():
                  os.path.exists(os.path.join(args.val_dir, 'val_labels.npy'))
 
     if val_is_npz:
-        print(f"Loading validation data from NPZ files in: {args.val_dir}")
         logging.info(f"Loading validation data from NPZ files in: {args.val_dir}")
+        print(f"Loading validation data from NPZ files in: {args.val_dir}")
         val_dataset = custom_datasets.NpzDataset(root_dir=args.val_dir, split='val', transform=data_transform["val"])
     else:
-        print(f"Loading validation data from ImageFolder: {args.val_dir}")
         logging.info(f"Loading validation data from ImageFolder: {args.val_dir}")
+        print(f"Loading validation data from ImageFolder: {args.val_dir}")
         val_dataset = torchvision_datasets.ImageFolder(root=args.val_dir, transform=data_transform["val"])
-
 
     val_num = len(val_dataset)
 
     nw = min([os.cpu_count(), args.batch_size if args.batch_size > 1 else 0, 8])
-    print(f'Using {nw} dataloader workers every process')
     logging.info(f'Using {nw} dataloader workers every process')
+    print(f'Using {nw} dataloader workers every process')
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=nw, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
         val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=nw, pin_memory=True)
-    print(f"Using {train_num} images for training, {val_num} images for validation.")
-    logging.info(f"Using {train_num} images for training, {val_num} images for validation.")
-    print(f"Number of classes: {num_classes}")
-    logging.info(f"Number of classes: {num_classes}")
 
+    logging.info(f"Using {train_num} images for training, {val_num} images for validation.")
+    print(f"Using {train_num} images for training, {val_num} images for validation.")
+    logging.info(f"Number of classes: {num_classes}")
+    print(f"Number of classes: {num_classes}")
 
     net = medmamba(num_classes=num_classes)
     net.to(device)
@@ -121,54 +122,71 @@ def main():
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.Adam(net.parameters(), lr=args.lr)
 
-    start_epoch = 0
+    start_epoch = 1
     best_acc = 0.0
-    save_path = f'./{args.model_name}_best.pth'
+    best_save_path = None
 
     if args.resume:
         checkpoint_path = args.resume
         if os.path.isfile(checkpoint_path):
-            print(f"Loading checkpoint: {checkpoint_path}")
             logging.info(f"Loading checkpoint: {checkpoint_path}")
+            print(f"Loading checkpoint: {checkpoint_path}")
             checkpoint = torch.load(checkpoint_path, map_location=device)
             net.load_state_dict(checkpoint['model_state_dict'])
 
             if 'optimizer_state_dict' in checkpoint:
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-                print("Optimizer state loaded.")
                 logging.info("Optimizer state loaded.")
+                print("Optimizer state loaded.")
             else:
                 logging.warning("Optimizer state not found in checkpoint, starting optimizer from scratch.")
+                print("Warning: Optimizer state not found in checkpoint, starting optimizer from scratch.")
 
             if 'epoch' in checkpoint:
                 start_epoch = checkpoint['epoch'] + 1
-                print(f"Resuming training from epoch {start_epoch}")
                 logging.info(f"Resuming training from epoch {start_epoch}")
+                print(f"Resuming training from epoch {start_epoch}")
             else:
-                 logging.warning("Epoch number not found in checkpoint, starting from epoch 0.")
+                 logging.warning("Epoch number not found in checkpoint, starting from epoch 1.")
+                 print("Warning: Epoch number not found in checkpoint, starting from epoch 1.")
+                 start_epoch = 1
 
             if 'best_acc' in checkpoint:
                 best_acc = checkpoint['best_acc']
-                print(f"Loaded best accuracy: {best_acc:.3f}")
                 logging.info(f"Loaded best accuracy: {best_acc:.3f}")
+                print(f"Loaded best accuracy: {best_acc:.3f}")
+                old_epoch = checkpoint.get('epoch', -1)
+                if old_epoch >= 0:
+                     potential_old_path = f'./{args.model_name}_epoch_{old_epoch}_best.pth'
+                     if os.path.isfile(potential_old_path) and potential_old_path == checkpoint_path:
+                          best_save_path = potential_old_path
             else:
                  logging.warning("Best accuracy not found in checkpoint, starting best_acc from 0.0.")
+                 print("Warning: Best accuracy not found in checkpoint, starting best_acc from 0.0.")
 
         else:
             logging.error(f"Checkpoint file not found: {checkpoint_path}. Starting training from scratch.")
-            start_epoch = 0
+            print(f"Error: Checkpoint file not found: {checkpoint_path}. Starting training from scratch.")
+            start_epoch = 1
             best_acc = 0.0
     else:
-        print("No checkpoint provided, starting training from scratch.")
-        logging.info("No checkpoint provided, starting training from scratch.")
+        logging.info("No checkpoint provided, starting training from epoch 1.")
+        print("No checkpoint provided, starting training from epoch 1.")
+
+
+    if args.epochs < start_epoch:
+        logging.warning(f"Target epochs ({args.epochs}) is less than start epoch ({start_epoch}). No training will occur.")
+        print(f"Warning: Target epochs ({args.epochs}) is less than start epoch ({start_epoch}). No training will occur.")
+        print(f'Finished Training (Target Epoch <= Start Epoch). Best validation accuracy recorded: {best_acc:.3f}')
+        sys.exit(0)
 
 
     train_steps = len(train_loader)
 
-    for epoch in range(start_epoch, args.epochs):
+    for epoch in range(start_epoch, args.epochs + 1):
         net.train()
         running_loss = 0.0
-        train_bar = tqdm(train_loader, file=sys.stdout, ncols=100, desc=f"Train Epoch {epoch+1}/{args.epochs}")
+        train_bar = tqdm(train_loader, file=sys.stdout, ncols=100, desc=f"Train Epoch {epoch}/{args.epochs}")
 
         for step, data in enumerate(train_bar):
             images, labels = data
@@ -186,7 +204,7 @@ def main():
         net.eval()
         acc = 0.0
         with torch.no_grad():
-            val_bar = tqdm(val_loader, file=sys.stdout, ncols=100, desc=f"Valid Epoch {epoch+1}/{args.epochs}")
+            val_bar = tqdm(val_loader, file=sys.stdout, ncols=100, desc=f"Valid Epoch {epoch}/{args.epochs}")
             for val_data in val_bar:
                 val_images, val_labels = val_data
                 val_images, val_labels = val_images.to(device), val_labels.to(device)
@@ -196,11 +214,14 @@ def main():
 
         val_accuracy = acc / val_num
         avg_train_loss = running_loss / train_steps
-        print(f'[Epoch {epoch + 1}/{args.epochs}] Train Loss: {avg_train_loss:.3f} | Val Accuracy: {val_accuracy:.3f}')
-        logging.info(f'[Epoch {epoch + 1}/{args.epochs}] Train Loss: {avg_train_loss:.3f} | Val Accuracy: {val_accuracy:.3f}')
+        log_message = f'[Epoch {epoch}/{args.epochs}] Train Loss: {avg_train_loss:.3f} | Val Accuracy: {val_accuracy:.3f}'
+        logging.info(log_message)
+        print(log_message)
+
 
         if val_accuracy > best_acc:
             best_acc = val_accuracy
+            new_save_path = f'./{args.model_name}_epoch_{epoch}_best.pth'
             checkpoint_data = {
                 'epoch': epoch,
                 'model_state_dict': net.state_dict(),
@@ -209,12 +230,26 @@ def main():
                 'num_classes': num_classes,
                 'class_indices': cla_dict
             }
-            torch.save(checkpoint_data, save_path)
-            print(f'New best model checkpoint saved to {save_path} with accuracy: {best_acc:.3f}')
-            logging.info(f'New best model checkpoint saved to {save_path} with accuracy: {best_acc:.3f}')
-            
-    print(f'Finished Training. Best validation accuracy: {best_acc:.3f}')
-    logging.info(f'Finished Training. Best validation accuracy: {best_acc:.3f}')
+            torch.save(checkpoint_data, new_save_path)
+            log_save_message = f'New best model checkpoint saved to {new_save_path} with accuracy: {best_acc:.3f}'
+            logging.info(log_save_message)
+            print(log_save_message)
+
+
+            if best_save_path and os.path.exists(best_save_path) and best_save_path != new_save_path:
+                 log_remove_message = f"Removing old best checkpoint: {best_save_path}"
+                 logging.info(log_remove_message)
+                 print(log_remove_message)
+
+                 os.remove(best_save_path)
+
+            best_save_path = new_save_path
+
+
+    log_finish_message = f'Finished Training. Final Epoch Reached: {args.epochs}. Best validation accuracy: {best_acc:.3f}'
+    logging.info(log_finish_message)
+    print(log_finish_message)
+
 
 
 if __name__ == '__main__':
