@@ -221,7 +221,7 @@ def main():
 
         if val_accuracy > best_acc:
             best_acc = val_accuracy
-            new_save_path = f'./{args.model_name}_epoch_{epoch}_best.pth'
+            new_save_path = f'./{args.model_name}_{epoch}_best.pth'
             checkpoint_data = {
                 'epoch': epoch,
                 'model_state_dict': net.state_dict(),
