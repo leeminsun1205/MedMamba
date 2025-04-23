@@ -42,8 +42,6 @@ class NpzDataset(Dataset):
         if self.transform:
             image_tensor = self.transform(pil_image)
         else:
-             # Nếu không có transform, có thể cần xử lý khác hoặc báo lỗi
-             # Tạm thời trả về PIL image nếu không có transform
              image_tensor = pil_image
 
         return image_tensor, label

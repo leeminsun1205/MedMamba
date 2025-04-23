@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 
 
-import torch
+import torch    
 import torch.nn as nn
 from torchvision import transforms, datasets as torchvision_datasets
 import torch.optim as optim
