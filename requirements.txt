@@ -1,13 +1,9 @@
 # PyTorch và các gói liên quan (cần chỉ định index riêng)
 mamba-ssm
-# causal-conv1d>=1.4.0
-causal-conv1d==1.1.1
-# torch --index-url https://download.pytorch.org/whl/cu121
-# torchvision
-# torchaudio 
-torch==2.1.1 
-torchvision==0.16.1 
-torchaudio==2.1.1 --index-url https://download.pytorch.org/whl/cu118
+causal-conv1d>=1.4.0
+torch --index-url https://download.pytorch.org/whl/cu121
+torchvision
+torchaudio 
 # Các gói phụ trợ
 packaging
 timm==0.4.12
