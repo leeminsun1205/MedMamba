@@ -1,12 +1,13 @@
 # PyTorch và các gói liên quan (cần chỉ định index riêng)
-mamba-ssm
+mamba-ssm --no-build-isolation
 causal-conv1d>=1.4.0
 torch --index-url https://download.pytorch.org/whl/cu121
 torchvision
 torchaudio 
 # Các gói phụ trợ
 packaging
-timm==0.4.12
+# timm==0.4.12
+timm
 pytest
 chardet
 yacs
