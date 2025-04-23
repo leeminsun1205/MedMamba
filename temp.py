@@ -35,6 +35,7 @@ def main():
     args = parse_args()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(f"Using {device} device.")
     logging.info(f"Using {device} device.")
 
     data_transform = {
@@ -55,12 +56,14 @@ def main():
                    os.path.exists(os.path.join(args.train_dir, 'train_labels.npy'))
 
     if train_is_npz:
+        print(f"Loading training data from NPZ files in: {args.train_dir}")
         logging.info(f"Loading training data from NPZ files in: {args.train_dir}")
         train_dataset = custom_datasets.NpzDataset(root_dir=args.train_dir, split='train', transform=data_transform["train"])
         num_classes = train_dataset.get_num_classes()
         cla_dict_np = train_dataset.get_class_to_idx()
         cla_dict = {k: int(v) for k, v in cla_dict_np.items()}
     else:
+        print(f"Loading training data from ImageFolder: {args.train_dir}")
         logging.info(f"Loading training data from ImageFolder: {args.train_dir}")
         train_dataset = torchvision_datasets.ImageFolder(root=args.train_dir, transform=data_transform["train"])
         num_classes = len(train_dataset.classes)
@@ -77,6 +80,7 @@ def main():
     train_num = len(train_dataset)
 
     class_indices_path = 'class_indices.json'
+    print(f"Saving class indices to {class_indices_path}")
     logging.info(f"Saving class indices to {class_indices_path}")
     with open(class_indices_path, 'w') as json_file:
         json.dump(cla_dict, json_file, indent=4)
@@ -85,9 +89,11 @@ def main():
                  os.path.exists(os.path.join(args.val_dir, 'val_labels.npy'))
 
     if val_is_npz:
+        print(f"Loading validation data from NPZ files in: {args.val_dir}")
         logging.info(f"Loading validation data from NPZ files in: {args.val_dir}")
         val_dataset = custom_datasets.NpzDataset(root_dir=args.val_dir, split='val', transform=data_transform["val"])
     else:
+        print(f"Loading validation data from ImageFolder: {args.val_dir}")
         logging.info(f"Loading validation data from ImageFolder: {args.val_dir}")
         val_dataset = torchvision_datasets.ImageFolder(root=args.val_dir, transform=data_transform["val"])
 
@@ -95,6 +101,7 @@ def main():
     val_num = len(val_dataset)
 
     nw = min([os.cpu_count(), args.batch_size if args.batch_size > 1 else 0, 8])
+    print(f'Using {nw} dataloader workers every process')
     logging.info(f'Using {nw} dataloader workers every process')
 
     train_loader = torch.utils.data.DataLoader(
@@ -102,8 +109,9 @@ def main():
 
     val_loader = torch.utils.data.DataLoader(
         val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=nw, pin_memory=True)
-
+    print(f"Using {train_num} images for training, {val_num} images for validation.")
     logging.info(f"Using {train_num} images for training, {val_num} images for validation.")
+    print(f"Number of classes: {num_classes}")
     logging.info(f"Number of classes: {num_classes}")
 
 
@@ -120,24 +128,28 @@ def main():
     if args.resume:
         checkpoint_path = args.resume
         if os.path.isfile(checkpoint_path):
+            print(f"Loading checkpoint: {checkpoint_path}")
             logging.info(f"Loading checkpoint: {checkpoint_path}")
             checkpoint = torch.load(checkpoint_path, map_location=device)
             net.load_state_dict(checkpoint['model_state_dict'])
 
             if 'optimizer_state_dict' in checkpoint:
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                print("Optimizer state loaded.")
                 logging.info("Optimizer state loaded.")
             else:
                 logging.warning("Optimizer state not found in checkpoint, starting optimizer from scratch.")
 
             if 'epoch' in checkpoint:
                 start_epoch = checkpoint['epoch'] + 1
+                print(f"Resuming training from epoch {start_epoch}")
                 logging.info(f"Resuming training from epoch {start_epoch}")
             else:
                  logging.warning("Epoch number not found in checkpoint, starting from epoch 0.")
 
             if 'best_acc' in checkpoint:
                 best_acc = checkpoint['best_acc']
+                print(f"Loaded best accuracy: {best_acc:.3f}")
                 logging.info(f"Loaded best accuracy: {best_acc:.3f}")
             else:
                  logging.warning("Best accuracy not found in checkpoint, starting best_acc from 0.0.")
@@ -147,6 +159,7 @@ def main():
             start_epoch = 0
             best_acc = 0.0
     else:
+        print("No checkpoint provided, starting training from scratch.")
         logging.info("No checkpoint provided, starting training from scratch.")
 
 
@@ -183,6 +196,7 @@ def main():
 
         val_accuracy = acc / val_num
         avg_train_loss = running_loss / train_steps
+        print(f'[Epoch {epoch + 1}/{args.epochs}] Train Loss: {avg_train_loss:.3f} | Val Accuracy: {val_accuracy:.3f}')
         logging.info(f'[Epoch {epoch + 1}/{args.epochs}] Train Loss: {avg_train_loss:.3f} | Val Accuracy: {val_accuracy:.3f}')
 
         if val_accuracy > best_acc:
@@ -196,8 +210,10 @@ def main():
                 'class_indices': cla_dict
             }
             torch.save(checkpoint_data, save_path)
+            print(f'New best model checkpoint saved to {save_path} with accuracy: {best_acc:.3f}')
             logging.info(f'New best model checkpoint saved to {save_path} with accuracy: {best_acc:.3f}')
-
+            
+    print(f'Finished Training. Best validation accuracy: {best_acc:.3f}')
     logging.info(f'Finished Training. Best validation accuracy: {best_acc:.3f}')
 
 
