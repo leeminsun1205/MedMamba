@@ -30,11 +30,14 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=None, help='Learning rate. If None, determined by dataset type.')
     parser.add_argument('--resume', type=str, default=None, help='Path to checkpoint .pth file to resume training from.')
     parser.add_argument('--patience', type=int, default=20, help='Patience for early stopping.')
+    parser.add_argument('--save_dir', type=str, default='.', help='Directory to save checkpoints.')
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    os.makedirs(args.save_dir, exist_ok=True)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using {device} device.")
@@ -46,7 +49,6 @@ def main():
     if train_is_npz:
         logging.info(f"Detected MedMNIST (NPZ) dataset.")
         print(f"Detected MedMNIST (NPZ) dataset.")
-        # MedMNIST settings
         epochs = args.epochs if args.epochs is not None else 100
         batch_size = args.batch_size if args.batch_size is not None else 100
         lr = args.lr if args.lr is not None else 0.001
@@ -56,7 +58,6 @@ def main():
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
-        # Autoaugment would be added here for MedMamba-X case
         data_transform_val = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
@@ -66,17 +67,15 @@ def main():
     else:
         logging.info(f"Detected non-MedMNIST dataset (ImageFolder).")
         print(f"Detected non-MedMNIST dataset (ImageFolder).")
-        # non-MedMNIST settings
         epochs = args.epochs if args.epochs is not None else 150
         batch_size = args.batch_size if args.batch_size is not None else 64
         lr = args.lr if args.lr is not None else 0.0001
-        lr_decay_epochs = [] # No decay mentioned for non-MedMNIST
+        lr_decay_epochs = []
         data_transform_train = transforms.Compose([
-            transforms.Resize((224, 224)), # Resize first as per text, then normalize/standardize
+            transforms.Resize((224, 224)),
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
-        # Text says no augmentation for non-MedMNIST
         data_transform_val = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
@@ -115,7 +114,7 @@ def main():
 
     train_num = len(train_dataset)
 
-    class_indices_path = 'class_indices.json'
+    class_indices_path = os.path.join(args.save_dir, 'class_indices.json')
     logging.info(f"Saving class indices to {class_indices_path}")
     print(f"Saving class indices to {class_indices_path}")
     with open(class_indices_path, 'w') as json_file:
@@ -159,10 +158,8 @@ def main():
 
     loss_function = nn.CrossEntropyLoss()
 
-    # Use AdamW as specified for both, with different default LR handled above
     optimizer = optim.AdamW(net.parameters(), lr=lr, betas=(0.9, 0.999), weight_decay=1e-4)
 
-    # Learning rate scheduler for MedMNIST
     if train_is_npz and lr_decay_epochs:
         scheduler = MultiStepLR(optimizer, milestones=lr_decay_epochs, gamma=0.1)
         logging.info(f"Using MultiStepLR with milestones: {lr_decay_epochs} and gamma: 0.1")
@@ -217,23 +214,22 @@ def main():
                 best_acc = checkpoint['best_acc']
                 logging.info(f"Loaded best accuracy: {best_acc:.3f}")
                 print(f"Loaded best accuracy: {best_acc:.3f}")
-                old_epoch = checkpoint.get('epoch', -1)
-                if old_epoch >= 0:
-                     potential_old_path = f'./{args.model_name}_epoch_{old_epoch}_best.pth'
-                     if os.path.isfile(potential_old_path) and potential_old_path == checkpoint_path:
-                          best_save_path = potential_old_path
             else:
                  logging.warning("Best accuracy not found in checkpoint, starting best_acc from 0.0.")
                  print("Warning: Best accuracy not found in checkpoint, starting best_acc from 0.0.")
+
+            best_save_path = None # Reset best_save_path tracking to be managed by the current run
 
         else:
             logging.error(f"Checkpoint file not found: {checkpoint_path}. Starting training from scratch.")
             print(f"Error: Checkpoint file not found: {checkpoint_path}. Starting training from scratch.")
             start_epoch = 1
             best_acc = 0.0
+            best_save_path = None
     else:
         logging.info("No checkpoint provided, starting training from epoch 1.")
         print("No checkpoint provided, starting training from epoch 1.")
+        best_save_path = None
 
 
     if epochs < start_epoch:
@@ -244,8 +240,10 @@ def main():
 
 
     train_steps = len(train_loader)
+    final_epoch_reached = start_epoch - 1 # Initialize to the epoch *before* the loop starts
 
     for epoch in range(start_epoch, epochs + 1):
+        final_epoch_reached = epoch # Update with the current epoch number
         net.train()
         running_loss = 0.0
         train_bar = tqdm(train_loader, file=sys.stdout, ncols=100, desc=f"Train Epoch {epoch}/{epochs}")
@@ -283,51 +281,79 @@ def main():
         logging.info(log_message)
         print(log_message)
 
-        # Early stopping logic
+        # Create checkpoint data dictionary for this epoch
+        checkpoint_data = {
+            'epoch': epoch,
+            'model_state_dict': net.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'best_acc': best_acc, # Note: best_acc here is the value *before* potential update below
+            'num_classes': num_classes,
+            'class_indices': cla_dict
+        }
+        if scheduler:
+            checkpoint_data['scheduler_state_dict'] = scheduler.state_dict()
+
+        # --- Save 'best' checkpoint ---
         if val_accuracy > best_acc:
             best_acc = val_accuracy
-            epochs_without_improvement = 0
-            new_save_path = f'./{args.model_name}_{epoch}_best.pth'
-            checkpoint_data = {
-                'epoch': epoch,
-                'model_state_dict': net.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'best_acc': best_acc,
-                'num_classes': num_classes,
-                'class_indices': cla_dict
-            }
-            if scheduler:
-                checkpoint_data['scheduler_state_dict'] = scheduler.state_dict()
+            epochs_without_improvement = 0 # Reset patience on new best
 
-            torch.save(checkpoint_data, new_save_path)
-            log_save_message = f'New best model checkpoint saved to {new_save_path} with accuracy: {best_acc:.3f}'
+            # Update best_acc in checkpoint_data before saving the best one
+            checkpoint_data['best_acc'] = best_acc
+
+            new_best_save_path = os.path.join(args.save_dir, f'{args.model_name}_epoch_{epoch}_best.pth')
+            torch.save(checkpoint_data, new_best_save_path)
+            log_save_message = f'New best model checkpoint saved to {new_best_save_path} with accuracy: {best_acc:.3f}'
             logging.info(log_save_message)
             print(log_save_message)
 
-
-            if best_save_path and os.path.exists(best_save_path) and best_save_path != new_save_path:
+            # Delete the old best checkpoint if it exists and is different from the new one
+            if best_save_path and os.path.exists(best_save_path) and best_save_path != new_best_save_path:
                  log_remove_message = f"Removing old best checkpoint: {best_save_path}"
                  logging.info(log_remove_message)
                  print(log_remove_message)
-
                  os.remove(best_save_path)
 
-            best_save_path = new_save_path
+            best_save_path = new_best_save_path
         else:
             epochs_without_improvement += 1
             logging.info(f"Validation accuracy did not improve. Patience: {epochs_without_improvement}/{args.patience}")
             print(f"Validation accuracy did not improve. Patience: {epochs_without_improvement}/{args.patience}")
 
 
+        # Early stopping check (after potentially saving best)
         if epochs_without_improvement >= args.patience:
             logging.info(f"Early stopping triggered after {args.patience} epochs without improvement.")
             print(f"Early stopping triggered after {args.patience} epochs without improvement.")
-            break
+            break # This breaks the for loop
+
+    # --- Save 'last' checkpoint after the loop finishes ---
+    # This block executes after the for loop completes (either naturally or by break)
+    last_save_path = os.path.join(args.save_dir, f'{args.model_name}_epoch_{final_epoch_reached}_last.pth')
+
+    # Ensure checkpoint_data reflects final state of the last completed epoch
+    # Note: best_acc in this final checkpoint data will be the overall best_acc achieved during the entire run
+    final_checkpoint_data = {
+        'epoch': final_epoch_reached,
+        'model_state_dict': net.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'best_acc': best_acc, # Use the overall best_acc achieved
+        'num_classes': num_classes,
+        'class_indices': cla_dict
+    }
+    if scheduler:
+        final_checkpoint_data['scheduler_state_dict'] = scheduler.state_dict()
+
+    torch.save(final_checkpoint_data, last_save_path)
+    log_last_save_message = f"Saved last checkpoint to {last_save_path}"
+    logging.info(log_last_save_message)
+    print(log_last_save_message)
 
 
-    log_finish_message = f'Finished Training. Final Epoch Reached: {epoch}. Best validation accuracy: {best_acc:.3f}'
+    log_finish_message = f'Finished Training. Final Epoch Reached: {final_epoch_reached}. Best validation accuracy: {best_acc:.3f}'
     logging.info(log_finish_message)
     print(log_finish_message)
+
 
 if __name__ == '__main__':
     main()
