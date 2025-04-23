@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 from torchvision import transforms, datasets as torchvision_datasets
 import torch.optim as optim
+from torch.optim.lr_scheduler import MultiStepLR
 from tqdm import tqdm
 
 from MedMamba import VSSM as medmamba
@@ -24,10 +25,11 @@ def parse_args():
     parser.add_argument('--val_dir', type=str, required=True, help='Path to validation dataset (folder or directory containing .npy files).')
     parser.add_argument('--num_classes', type=int, default=None, help='Number of output classes. If None and using NPZ, inferred from data.')
     parser.add_argument('--model_name', type=str, default='Medmamba', help='Model name for saving.')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size.')
-    parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs (total epochs to reach).')
-    parser.add_argument('--lr', type=float, default=0.0001, help='Learning rate.')
+    parser.add_argument('--batch_size', type=int, default=None, help='Batch size. If None, determined by dataset type.')
+    parser.add_argument('--epochs', type=int, default=None, help='Number of training epochs. If None, determined by dataset type.')
+    parser.add_argument('--lr', type=float, default=None, help='Learning rate. If None, determined by dataset type.')
     parser.add_argument('--resume', type=str, default=None, help='Path to checkpoint .pth file to resume training from.')
+    parser.add_argument('--patience', type=int, default=20, help='Patience for early stopping.')
     return parser.parse_args()
 
 
@@ -38,22 +40,54 @@ def main():
     logging.info(f"Using {device} device.")
     print(f"Using {device} device.")
 
-    data_transform = {
-        "train": transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ]),
-        "val": transforms.Compose([
+    train_is_npz = os.path.exists(os.path.join(args.train_dir, 'train_images.npy')) and \
+                   os.path.exists(os.path.join(args.train_dir, 'train_labels.npy'))
+
+    if train_is_npz:
+        logging.info(f"Detected MedMNIST (NPZ) dataset.")
+        print(f"Detected MedMNIST (NPZ) dataset.")
+        # MedMNIST settings
+        epochs = args.epochs if args.epochs is not None else 100
+        batch_size = args.batch_size if args.batch_size is not None else 100
+        lr = args.lr if args.lr is not None else 0.001
+        lr_decay_epochs = [50, 75]
+        data_transform_train = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
+        # Autoaugment would be added here for MedMamba-X case
+        data_transform_val = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+
+    else:
+        logging.info(f"Detected non-MedMNIST dataset (ImageFolder).")
+        print(f"Detected non-MedMNIST dataset (ImageFolder).")
+        # non-MedMNIST settings
+        epochs = args.epochs if args.epochs is not None else 150
+        batch_size = args.batch_size if args.batch_size is not None else 64
+        lr = args.lr if args.lr is not None else 0.0001
+        lr_decay_epochs = [] # No decay mentioned for non-MedMNIST
+        data_transform_train = transforms.Compose([
+            transforms.Resize((224, 224)), # Resize first as per text, then normalize/standardize
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+        # Text says no augmentation for non-MedMNIST
+        data_transform_val = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+
+    data_transform = {
+        "train": data_transform_train,
+        "val": data_transform_val
     }
 
-    train_is_npz = os.path.exists(os.path.join(args.train_dir, 'train_images.npy')) and \
-                   os.path.exists(os.path.join(args.train_dir, 'train_labels.npy'))
 
     if train_is_npz:
         logging.info(f"Loading training data from NPZ files in: {args.train_dir}")
@@ -99,32 +133,51 @@ def main():
         print(f"Loading validation data from ImageFolder: {args.val_dir}")
         val_dataset = torchvision_datasets.ImageFolder(root=args.val_dir, transform=data_transform["val"])
 
+
     val_num = len(val_dataset)
 
-    nw = min([os.cpu_count(), args.batch_size if args.batch_size > 1 else 0, 8])
+    nw = min([os.cpu_count(), batch_size if batch_size > 1 else 0, 8])
     logging.info(f'Using {nw} dataloader workers every process')
     print(f'Using {nw} dataloader workers every process')
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=nw, pin_memory=True)
+        train_dataset, batch_size=batch_size, shuffle=True, num_workers=nw, pin_memory=True)
 
     val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=nw, pin_memory=True)
+        val_dataset, batch_size=batch_size, shuffle=False, num_workers=nw, pin_memory=True)
 
     logging.info(f"Using {train_num} images for training, {val_num} images for validation.")
     print(f"Using {train_num} images for training, {val_num} images for validation.")
     logging.info(f"Number of classes: {num_classes}")
     print(f"Number of classes: {num_classes}")
+    logging.info(f"Epochs: {epochs}, Batch Size: {batch_size}, Initial LR: {lr}")
+    print(f"Epochs: {epochs}, Batch Size: {batch_size}, Initial LR: {lr}")
+
 
     net = medmamba(num_classes=num_classes)
     net.to(device)
 
     loss_function = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(net.parameters(), lr=args.lr)
+
+    # Use AdamW as specified for both, with different default LR handled above
+    optimizer = optim.AdamW(net.parameters(), lr=lr, betas=(0.9, 0.999), weight_decay=1e-4)
+
+    # Learning rate scheduler for MedMNIST
+    if train_is_npz and lr_decay_epochs:
+        scheduler = MultiStepLR(optimizer, milestones=lr_decay_epochs, gamma=0.1)
+        logging.info(f"Using MultiStepLR with milestones: {lr_decay_epochs} and gamma: 0.1")
+        print(f"Using MultiStepLR with milestones: {lr_decay_epochs} and gamma: 0.1")
+    else:
+        scheduler = None
+        logging.info("No learning rate scheduler applied.")
+        print("No learning rate scheduler applied.")
+
 
     start_epoch = 1
     best_acc = 0.0
     best_save_path = None
+    epochs_without_improvement = 0
+
 
     if args.resume:
         checkpoint_path = args.resume
@@ -141,6 +194,15 @@ def main():
             else:
                 logging.warning("Optimizer state not found in checkpoint, starting optimizer from scratch.")
                 print("Warning: Optimizer state not found in checkpoint, starting optimizer from scratch.")
+
+            if scheduler and 'scheduler_state_dict' in checkpoint:
+                 scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+                 logging.info("Scheduler state loaded.")
+                 print("Scheduler state loaded.")
+            elif scheduler:
+                 logging.warning("Scheduler state not found in checkpoint. Scheduler will start without loaded state.")
+                 print("Warning: Scheduler state not found in checkpoint. Scheduler will start without loaded state.")
+
 
             if 'epoch' in checkpoint:
                 start_epoch = checkpoint['epoch'] + 1
@@ -174,19 +236,19 @@ def main():
         print("No checkpoint provided, starting training from epoch 1.")
 
 
-    if args.epochs < start_epoch:
-        logging.warning(f"Target epochs ({args.epochs}) is less than start epoch ({start_epoch}). No training will occur.")
-        print(f"Warning: Target epochs ({args.epochs}) is less than start epoch ({start_epoch}). No training will occur.")
+    if epochs < start_epoch:
+        logging.warning(f"Target epochs ({epochs}) is less than start epoch ({start_epoch}). No training will occur.")
+        print(f"Warning: Target epochs ({epochs}) is less than start epoch ({start_epoch}). No training will occur.")
         print(f'Finished Training (Target Epoch <= Start Epoch). Best validation accuracy recorded: {best_acc:.3f}')
         sys.exit(0)
 
 
     train_steps = len(train_loader)
 
-    for epoch in range(start_epoch, args.epochs + 1):
+    for epoch in range(start_epoch, epochs + 1):
         net.train()
         running_loss = 0.0
-        train_bar = tqdm(train_loader, file=sys.stdout, ncols=100, desc=f"Train Epoch {epoch}/{args.epochs}")
+        train_bar = tqdm(train_loader, file=sys.stdout, ncols=100, desc=f"Train Epoch {epoch}/{epochs}")
 
         for step, data in enumerate(train_bar):
             images, labels = data
@@ -201,10 +263,13 @@ def main():
             running_loss += loss.item()
             train_bar.set_postfix(loss=f"{loss.item():.3f}")
 
+        if scheduler:
+            scheduler.step()
+
         net.eval()
         acc = 0.0
         with torch.no_grad():
-            val_bar = tqdm(val_loader, file=sys.stdout, ncols=100, desc=f"Valid Epoch {epoch}/{args.epochs}")
+            val_bar = tqdm(val_loader, file=sys.stdout, ncols=100, desc=f"Valid Epoch {epoch}/{epochs}")
             for val_data in val_bar:
                 val_images, val_labels = val_data
                 val_images, val_labels = val_images.to(device), val_labels.to(device)
@@ -214,14 +279,15 @@ def main():
 
         val_accuracy = acc / val_num
         avg_train_loss = running_loss / train_steps
-        log_message = f'[Epoch {epoch}/{args.epochs}] Train Loss: {avg_train_loss:.3f} | Val Accuracy: {val_accuracy:.3f}'
+        log_message = f'[Epoch {epoch}/{epochs}] Train Loss: {avg_train_loss:.3f} | Val Accuracy: {val_accuracy:.3f}'
         logging.info(log_message)
         print(log_message)
 
-
+        # Early stopping logic
         if val_accuracy > best_acc:
             best_acc = val_accuracy
-            new_save_path = f'./{args.model_name}_{epoch}_best.pth'
+            epochs_without_improvement = 0
+            new_save_path = f'./{args.model_name}_epoch_{epoch}_best.pth'
             checkpoint_data = {
                 'epoch': epoch,
                 'model_state_dict': net.state_dict(),
@@ -230,6 +296,9 @@ def main():
                 'num_classes': num_classes,
                 'class_indices': cla_dict
             }
+            if scheduler:
+                checkpoint_data['scheduler_state_dict'] = scheduler.state_dict()
+
             torch.save(checkpoint_data, new_save_path)
             log_save_message = f'New best model checkpoint saved to {new_save_path} with accuracy: {best_acc:.3f}'
             logging.info(log_save_message)
@@ -244,13 +313,21 @@ def main():
                  os.remove(best_save_path)
 
             best_save_path = new_save_path
+        else:
+            epochs_without_improvement += 1
+            logging.info(f"Validation accuracy did not improve. Patience: {epochs_without_improvement}/{args.patience}")
+            print(f"Validation accuracy did not improve. Patience: {epochs_without_improvement}/{args.patience}")
 
 
-    log_finish_message = f'Finished Training. Final Epoch Reached: {args.epochs}. Best validation accuracy: {best_acc:.3f}'
+        if epochs_without_improvement >= args.patience:
+            logging.info(f"Early stopping triggered after {args.patience} epochs without improvement.")
+            print(f"Early stopping triggered after {args.patience} epochs without improvement.")
+            break
+
+
+    log_finish_message = f'Finished Training. Final Epoch Reached: {epoch}. Best validation accuracy: {best_acc:.3f}'
     logging.info(log_finish_message)
     print(log_finish_message)
-
-
 
 if __name__ == '__main__':
     main()
