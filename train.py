@@ -18,8 +18,6 @@ import datasets as custom_datasets
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-FIXED_SEED = 42
-
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -30,8 +28,12 @@ def set_seed(seed):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
-# Gọi hàm set_seed với giá trị cố định ngay đây
-set_seed(FIXED_SEED)
+def check_early_stopping(epochs_without_improvement, patience, epoch, total_epochs):
+    if epochs_without_improvement >= patience:
+        logging.info(f"Early stopping triggered after {patience} epochs without improvement at epoch {epoch}/{total_epochs}.")
+        print(f"Early stopping triggered after {patience} epochs without improvement at epoch {epoch}/{total_epochs}.")
+        return True
+    return False
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a Medmamba model.')
@@ -45,11 +47,14 @@ def parse_args():
     parser.add_argument('--resume', type=str, default=None, help='Path to checkpoint .pth file to resume training from.')
     parser.add_argument('--patience', type=int, default=20, help='Patience for early stopping.')
     parser.add_argument('--save_dir', type=str, default='.', help='Directory to save checkpoints.')
+    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--use_early_stopping', action='store_true', default=False)
     return parser.parse_args()
-
 
 def main():
     args = parse_args()
+
+    set_seed(args.seed)
 
     os.makedirs(args.save_dir, exist_ok=True)
 
@@ -91,7 +96,6 @@ def main():
         "train": data_transform_train,
         "val": data_transform_val
     }
-
 
     if train_is_npz:
         logging.info(f"Loading training data from NPZ files in: {args.train_dir}")
@@ -137,7 +141,6 @@ def main():
         print(f"Loading validation data from ImageFolder: {args.val_dir}")
         val_dataset = torchvision_datasets.ImageFolder(root=args.val_dir, transform=data_transform["val"])
 
-
     val_num = len(val_dataset)
 
     nw = min([os.cpu_count(), batch_size if batch_size > 1 else 0, 8])
@@ -157,13 +160,15 @@ def main():
     logging.info(f"Epochs: {epochs}, Batch Size: {batch_size}, Initial LR: {lr}")
     print(f"Epochs: {epochs}, Batch Size: {batch_size}, Initial LR: {lr}")
 
-
     net = medmamba(num_classes=num_classes)
     net.to(device)
 
     loss_function = nn.CrossEntropyLoss()
 
-    optimizer = optim.AdamW(net.parameters(), lr=lr, betas=(0.9, 0.999), weight_decay=1e-4)
+    if train_is_npz:
+        optimizer = optim.AdamW(net.parameters(), lr=lr)
+    else:
+        optimizer = optim.AdamW(net.parameters(), lr=lr, betas=(0.9, 0.999), weight_decay=1e-4)
 
     if train_is_npz and lr_decay_epochs:
         scheduler = MultiStepLR(optimizer, milestones=lr_decay_epochs, gamma=0.1)
@@ -174,12 +179,10 @@ def main():
         logging.info("No learning rate scheduler applied.")
         print("No learning rate scheduler applied.")
 
-
     start_epoch = 1
     best_acc = 0.0
     best_save_path = None
     epochs_without_improvement = 0
-
 
     if args.resume:
         checkpoint_path = args.resume
@@ -205,7 +208,6 @@ def main():
                  logging.warning("Scheduler state not found in checkpoint. Scheduler will start without loaded state.")
                  print("Warning: Scheduler state not found in checkpoint. Scheduler will start without loaded state.")
 
-
             if 'epoch' in checkpoint:
                 start_epoch = checkpoint['epoch'] + 1
                 logging.info(f"Resuming training from epoch {start_epoch}")
@@ -223,7 +225,7 @@ def main():
                  logging.warning("Best accuracy not found in checkpoint, starting best_acc from 0.0.")
                  print("Warning: Best accuracy not found in checkpoint, starting best_acc from 0.0.")
 
-            best_save_path = None # Reset best_save_path tracking to be managed by the current run
+            best_save_path = None
 
         else:
             logging.error(f"Checkpoint file not found: {checkpoint_path}. Starting training from scratch.")
@@ -236,19 +238,17 @@ def main():
         print("No checkpoint provided, starting training from epoch 1.")
         best_save_path = None
 
-
     if epochs < start_epoch:
         logging.warning(f"Target epochs ({epochs}) is less than start epoch ({start_epoch}). No training will occur.")
         print(f"Warning: Target epochs ({epochs}) is less than start epoch ({start_epoch}). No training will occur.")
         print(f'Finished Training (Target Epoch <= Start Epoch). Best validation accuracy recorded: {best_acc:.3f}')
         sys.exit(0)
 
-
     train_steps = len(train_loader)
-    final_epoch_reached = start_epoch - 1 # Initialize to the epoch *before* the loop starts
+    final_epoch_reached = start_epoch - 1
 
     for epoch in range(start_epoch, epochs + 1):
-        final_epoch_reached = epoch # Update with the current epoch number
+        final_epoch_reached = epoch
         net.train()
         running_loss = 0.0
         train_bar = tqdm(train_loader, file=sys.stdout, ncols=100, desc=f"Train Epoch {epoch}/{epochs}")
@@ -286,24 +286,21 @@ def main():
         logging.info(log_message)
         print(log_message)
 
-        # Create checkpoint data dictionary for this epoch
         checkpoint_data = {
             'epoch': epoch,
             'model_state_dict': net.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'best_acc': best_acc, # Note: best_acc here is the value *before* potential update below
+            'best_acc': best_acc,
             'num_classes': num_classes,
             'class_indices': cla_dict
         }
         if scheduler:
             checkpoint_data['scheduler_state_dict'] = scheduler.state_dict()
 
-        # --- Save 'best' checkpoint ---
         if val_accuracy > best_acc:
             best_acc = val_accuracy
-            epochs_without_improvement = 0 # Reset patience on new best
+            epochs_without_improvement = 0
 
-            # Update best_acc in checkpoint_data before saving the best one
             checkpoint_data['best_acc'] = best_acc
 
             new_best_save_path = os.path.join(args.save_dir, f'{args.model_name}_epoch_{epoch}_best.pth')
@@ -312,7 +309,6 @@ def main():
             logging.info(log_save_message)
             print(log_save_message)
 
-            # Delete the old best checkpoint if it exists and is different from the new one
             if best_save_path and os.path.exists(best_save_path) and best_save_path != new_best_save_path:
                  log_remove_message = f"Removing old best checkpoint: {best_save_path}"
                  logging.info(log_remove_message)
@@ -325,24 +321,17 @@ def main():
             logging.info(f"Validation accuracy did not improve. Patience: {epochs_without_improvement}/{args.patience}")
             print(f"Validation accuracy did not improve. Patience: {epochs_without_improvement}/{args.patience}")
 
+        if args.use_early_stopping:
+            if check_early_stopping(epochs_without_improvement, args.patience, epoch, epochs):
+                break
 
-        # Early stopping check (after potentially saving best)
-        if epochs_without_improvement >= args.patience:
-            logging.info(f"Early stopping triggered after {args.patience} epochs without improvement.")
-            print(f"Early stopping triggered after {args.patience} epochs without improvement.")
-            break # This breaks the for loop
-
-    # --- Save 'last' checkpoint after the loop finishes ---
-    # This block executes after the for loop completes (either naturally or by break)
     last_save_path = os.path.join(args.save_dir, f'{args.model_name}_epoch_{final_epoch_reached}_last.pth')
 
-    # Ensure checkpoint_data reflects final state of the last completed epoch
-    # Note: best_acc in this final checkpoint data will be the overall best_acc achieved during the entire run
     final_checkpoint_data = {
         'epoch': final_epoch_reached,
         'model_state_dict': net.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
-        'best_acc': best_acc, # Use the overall best_acc achieved
+        'best_acc': best_acc,
         'num_classes': num_classes,
         'class_indices': cla_dict
     }
@@ -354,11 +343,9 @@ def main():
     logging.info(log_last_save_message)
     print(log_last_save_message)
 
-
     log_finish_message = f'Finished Training. Final Epoch Reached: {final_epoch_reached}. Best validation accuracy: {best_acc:.3f}'
     logging.info(log_finish_message)
     print(log_finish_message)
-
 
 if __name__ == '__main__':
     main()
