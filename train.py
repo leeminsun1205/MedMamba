@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 from PIL import Image
 import logging
-
+import random
 import torch
 import torch.nn as nn
 from torchvision import transforms, datasets as torchvision_datasets
@@ -18,6 +18,20 @@ import datasets as custom_datasets
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+FIXED_SEED = 42
+
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
+# Gọi hàm set_seed với giá trị cố định ngay đây
+set_seed(FIXED_SEED)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a Medmamba model.')
@@ -53,16 +67,6 @@ def main():
         batch_size = args.batch_size if args.batch_size is not None else 100
         lr = args.lr if args.lr is not None else 0.001
         lr_decay_epochs = [50, 75]
-        data_transform_train = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ])
-        data_transform_val = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ])
 
     else:
         logging.info(f"Detected non-MedMNIST dataset (ImageFolder).")
@@ -71,16 +75,17 @@ def main():
         batch_size = args.batch_size if args.batch_size is not None else 64
         lr = args.lr if args.lr is not None else 0.0001
         lr_decay_epochs = []
-        data_transform_train = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ])
-        data_transform_val = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        ])
+        
+    data_transform_train = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    ])
+    data_transform_val = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    ])
 
     data_transform = {
         "train": data_transform_train,
