@@ -45,7 +45,7 @@ def parse_args():
     parser.add_argument('--epochs', type=int, default=None, help='Number of training epochs. If None, determined by dataset type.')
     parser.add_argument('--lr', type=float, default=None, help='Learning rate. If None, determined by dataset type.')
     parser.add_argument('--resume', type=str, default=None, help='Path to checkpoint .pth file to resume training from.')
-    parser.add_argument('--patience', type=int, default=20, help='Patience for early stopping.')
+    parser.add_argument('--patience', type=int, default=25, help='Patience for early stopping.')
     parser.add_argument('--save_dir', type=str, default='.', help='Directory to save checkpoints.')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--use_early_stopping', action='store_true', default=False)
