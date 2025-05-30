@@ -221,7 +221,22 @@ def main_gradcam_demo():
     axs[1].axis('off')
 
     plt.tight_layout(rect=[0, 0, 1, 0.96]) # Adjust layout to make space for suptitle
-    plt.show()
+    
+    # Thay vì plt.show(), hãy lưu vào tệp
+    output_filename = "gradcam_result.png"
+    try:
+        plt.savefig(output_filename)
+        print(f"Grad-CAM result saved to: {os.path.abspath(output_filename)}")
+    except Exception as e:
+        print(f"Error saving figure: {e}")
+    
+    # Bạn vẫn có thể giữ plt.show() nếu muốn thử hiển thị sau khi lưu,
+    # nhưng trong môi trường không có GUI, nó sẽ không có tác dụng hoặc gây cảnh báo.
+    # plt.show() 
+    
+    # Đóng figure để giải phóng bộ nhớ
+    plt.close(fig)
+
 
 if __name__ == '__main__':
     main_gradcam_demo()
