@@ -312,7 +312,7 @@ def main_app(): #
                         
                         col1, col2 = st.columns([2,3]) #
                         with col1: #
-                            st.image(image_pil_for_prediction, caption=f"Ảnh Ngẫu Nhiên: {os.path.basename(random_image_path)}", use_column_width=True) #
+                            st.image(image_pil_for_prediction, caption=f"Ảnh Ngẫu Nhiên: {os.path.basename(random_image_path)}", use_container_width=True) 
                         
                         with col2: #
                             with st.spinner("Đang dự đoán..."): #
