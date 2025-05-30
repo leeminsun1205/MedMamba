@@ -261,7 +261,7 @@ def main_app(): #
                 
                 col1, col2 = st.columns([2,3]) #
                 with col1: #
-                    st.image(image_pil_for_prediction, caption="Ảnh Đã Tải Lên", use_column_width=True) #
+                    st.image(image_pil_for_prediction, caption="Ảnh Đã Tải Lên", use_container_width=True) #
 
                 with col2: #
                     if st.button("Thực Hiện Dự Đoán", key="predict_uploaded_button"): #
@@ -405,14 +405,10 @@ def main_app(): #
                             caption_original = f"Ảnh Gốc"
                             if last_prediction_info:
                                 caption_original += f"\nDự đoán: {last_prediction_info['class_name']} ({last_prediction_info['confidence']:.2f})"
-                            st.image(original_img_display, caption=caption_original, use_column_width=True)
+                            st.image(original_img_display, caption=caption_original, use_container_width=True)
                         with col_gradcam2:
                             smooth_text = " (Làm mịn)" if smooth_cam_gradcam else "" #
-                            st.image(cam_image, caption=f"Grad-CAM cho lớp: {target_gradcam_class_name_display}{smooth_text}", use_column_width=True)
-                    # Không cần else ở đây vì generate_gradcam_image đã hiển thị lỗi bằng st.error()
-    
-    st.sidebar.markdown("---") #
-    st.sidebar.markdown("Được hỗ trợ bởi Đối tác Lập trình Gemini") #
+                            st.image(cam_image, caption=f"Grad-CAM cho lớp: {target_gradcam_class_name_display}{smooth_text}", use_container_width=True)
 
 if __name__ == '__main__': #
     main_app() #
