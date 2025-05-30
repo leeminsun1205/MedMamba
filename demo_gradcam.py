@@ -6,20 +6,11 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from torchvision import transforms
 import json
-import cv2 # Import OpenCV để làm mịn
+import cv2
 
-# Giả sử các import này hoạt động đúng trong môi trường của bạn
-try:
-    from MedMamba import VSSM as medmamba
-    from grad_cam.utils import GradCAM, show_cam_on_image
-except ImportError as e:
-    # Gợi ý cách khắc phục nếu streamlit chạy từ thư mục khác
-    # import sys
-    # sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))) # Thêm thư mục cha vào path
-    # from MedMamba import VSSM as medmamba
-    # from grad_cam.utils import GradCAM, show_cam_on_image
-    print(f"Lỗi import: {e}. Hãy đảm bảo MedMamba.py và thư mục grad_cam/utils.py ở đúng vị trí.")
-    exit()
+from MedMamba import VSSM as medmamba
+from grad_cam.utils import GradCAM, show_cam_on_image
+
 
 
 class MedMambaReshapeTransform:
@@ -38,9 +29,6 @@ def main_gradcam_demo():
                         help='Path to the input image.')
     parser.add_argument('--class_indices_path', type=str, default=None,
                         help='Path to class_indices.json.')
-    parser.add_argument('--target_layer_type', type=str, default='ss2d_out_norm',
-                        choices=['ss2d_out_norm', 'conv_branch_last_conv', 'block_input_norm'],
-                        help='Type of target layer for Grad-CAM.')
     parser.add_argument('--target_category', type=int, default=None,
                         help='Target category index. If None, uses predicted class.')
     parser.add_argument('--img_size', type=int, default=224,
@@ -58,31 +46,16 @@ def main_gradcam_demo():
 
     class_indices = None
     if args.class_indices_path and os.path.exists(args.class_indices_path):
-        try:
-            with open(args.class_indices_path, 'r') as f:
-                class_indices = json.load(f)
-            print(f"Loaded class_indices from: {args.class_indices_path}")
-        except Exception as e:
-            print(f"Could not load class_indices from {args.class_indices_path}: {e}")
+        with open(args.class_indices_path, 'r') as f:
+            class_indices = json.load(f)
+        print(f"Loaded class_indices from: {args.class_indices_path}")
 
     print(f"Loading checkpoint: {args.checkpoint_path}")
     if not os.path.exists(args.checkpoint_path):
         print(f"Error: Checkpoint file not found at {args.checkpoint_path}")
         return
     
-    # Sử dụng weights_only=True nếu bạn chắc chắn về nguồn gốc checkpoint để tăng bảo mật
-    # Tuy nhiên, một số checkpoint cũ hoặc tùy chỉnh có thể yêu cầu weights_only=False
-    try:
-        checkpoint = torch.load(args.checkpoint_path, map_location=device, weights_only=False)
-    except Exception as e:
-        print(f"Pytorch Security Warning or Error loading checkpoint: {e}")
-        print("Trying with weights_only=True...")
-        try:
-            checkpoint = torch.load(args.checkpoint_path, map_location=device, weights_only=True)
-        except Exception as e_true:
-            print(f"Failed to load checkpoint with weights_only=True as well: {e_true}")
-            return
-
+    checkpoint = torch.load(args.checkpoint_path, map_location=device, weights_only=False)
 
     num_classes = checkpoint.get('num_classes')
     if num_classes is None:
@@ -101,23 +74,11 @@ def main_gradcam_demo():
     model.to(device)
     print(f"Model loaded successfully. Number of classes: {num_classes}")
 
-    try:
-        if args.target_layer_type == 'ss2d_out_norm':
-            target_layer = model.layers[-1].blocks[-1].self_attention.out_norm
-            layer_name = "model.layers[-1].blocks[-1].self_attention.out_norm"
-        elif args.target_layer_type == 'conv_branch_last_conv':
-            target_layer = model.layers[-1].blocks[-1].conv33conv33conv11[-2]
-            layer_name = "model.layers[-1].blocks[-1].conv33conv33conv11[-2]"
-        elif args.target_layer_type == 'block_input_norm':
-            target_layer = model.layers[-1].blocks[-1].ln_1
-            layer_name = "model.layers[-1].blocks[-1].ln_1"
-        else:
-            raise ValueError(f"Unknown target_layer_type: {args.target_layer_type}")
-        target_layers = [target_layer]
-        print(f"Using target layer: {layer_name}")
-    except AttributeError as e:
-        print(f"Error accessing target layer: {e}. Please check model structure and target_layer_type.")
-        return
+   
+    target_layer = model.layers[-1].blocks[-1].conv33conv33conv11[-2]
+    layer_name = "model.layers[-1].blocks[-1].conv33conv33conv11[-2]"
+    target_layers = [target_layer]
+    print(f"Using target layer: {layer_name}")
 
     img_size = args.img_size
     data_transform = transforms.Compose([
@@ -126,14 +87,9 @@ def main_gradcam_demo():
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     ])
 
-    try:
-        original_pil_img = Image.open(args.image_path).convert('RGB')
-    except FileNotFoundError:
-        print(f"Error: Image file not found at {args.image_path}")
-        return
-    except Exception as e:
-        print(f"Error opening image {args.image_path}: {e}")
-        return
+
+    original_pil_img = Image.open(args.image_path).convert('RGB')
+    
 
     img_tensor_transformed = data_transform(original_pil_img)
     input_tensor = torch.unsqueeze(img_tensor_transformed, dim=0).to(device)
@@ -182,14 +138,12 @@ def main_gradcam_demo():
         return
     grayscale_cam = grayscale_cam[0, :]
 
-    # ÁP DỤNG LÀM MỊN NẾU CÓ FLAG
     if args.smooth_cam:
         ksize = args.gaussian_ksize
-        if ksize % 2 == 0: # Kernel size phải là số lẻ
+        if ksize % 2 == 0: 
             ksize +=1
         grayscale_cam = cv2.GaussianBlur(grayscale_cam, (ksize, ksize), 0)
         print(f"Applied Gaussian Blur with kernel size ({ksize},{ksize})")
-
 
     cam_image = show_cam_on_image(img_for_display, grayscale_cam, use_rgb=True)
 
@@ -214,7 +168,6 @@ def main_gradcam_demo():
     except Exception as e:
         print(f"Error saving figure: {e}")
     
-    # plt.show() # Bỏ comment nếu bạn muốn thử hiển thị trực tiếp (có thể không hoạt động trên Kaggle terminal)
     plt.close(fig)
 
 
