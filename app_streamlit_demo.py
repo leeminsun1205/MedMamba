@@ -266,7 +266,7 @@ def main_app(): #
                 try:
                     image_pil_for_prediction = Image.open(uploaded_file).convert('RGB') #
                     caption_image_source = "Ảnh Đã Tải Lên"
-                    st.image(image_pil_for_prediction, caption=caption_image_source, use_column_width=True) #
+                    st.image(image_pil_for_prediction, caption=caption_image_source, use_container_width=True) #
                 except Exception as e: #
                     st.error(f"Lỗi xử lý ảnh tải lên: {e}") #
                     image_pil_for_prediction = None
@@ -306,7 +306,7 @@ def main_app(): #
             
             # Hiển thị ảnh đã lấy ngẫu nhiên (nếu có)
             if 'current_image_pil' in st.session_state and st.session_state.current_image_pil is not None:
-                st.image(st.session_state.current_image_pil, caption=st.session_state.current_caption, use_column_width=True) #
+                st.image(st.session_state.current_image_pil, caption=st.session_state.current_caption, use_container_width=True) #
                 image_pil_for_prediction = st.session_state.current_image_pil
 
 
@@ -385,7 +385,7 @@ def main_app(): #
                         target_gradcam_class_name_display = st.session_state.class_indices.get(str(target_category_for_gradcam), str(target_category_for_gradcam)) #
                     
                     # Hiển thị ảnh Grad-CAM ngay tại đây
-                    st.image(cam_image, caption=f"Grad-CAM cho lớp: {target_gradcam_class_name_display}", use_column_width=True) #
+                    st.image(cam_image, caption=f"Grad-CAM cho lớp: {target_gradcam_class_name_display}", use_container_width=True) #
                 # Lỗi đã được xử lý bên trong generate_gradcam_image
         elif 'last_prediction_info' in st.session_state and st.session_state.last_prediction_info is None and 'predict_and_gradcam_button' in st.session_state :
             # Trường hợp người dùng đã nhấn nút dự đoán nhưng chưa có ảnh hợp lệ
