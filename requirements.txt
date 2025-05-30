@@ -22,3 +22,5 @@ h5py
 SimpleITK
 scikit-image
 medpy
+streamlit
+pyngrok
