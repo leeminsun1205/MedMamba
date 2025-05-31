@@ -24,6 +24,7 @@ def parse_args_test():
     parser.add_argument('--test_dir', type=str, required=True, help='Path to the test dataset (folder or directory containing .npy files).')
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size for testing.')
     parser.add_argument('--num_classes', type=int, default=None, help='Number of output classes. If None, inferred from checkpoint.')
+    parser.add_argument('--medmb_size', type=str, default='T', choices=['T', 'S', 'B'], help='Choose medmb size: T, S, or B')
     return parser.parse_args()
 
 
@@ -109,7 +110,10 @@ def main_test():
 
 
     # Initialize model and load state dict
-    net = medmamba(num_classes=num_classes)
+    if args.medmb_size == 'T': net = medmamba(depths=[2, 2, 4, 2],dims=[96,192,384,768],num_classes=num_classes)
+    elif args.medmb_size == 'S': net = medmamba(depths=[2, 2, 8, 2],dims=[96,192,384,768],num_classes=num_classes)
+    else: net = medmamba(depths=[2, 2, 12, 2],dims=[128,256,512,1024],num_classes=num_classes)
+    logging.info(f'Model size: "{args.medmb_size}"')
     net.to(device)
     net.load_state_dict(checkpoint['model_state_dict'])
     logging.info("Model state loaded successfully.")
