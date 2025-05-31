@@ -84,6 +84,7 @@ def main():
         lr_decay_epochs = []
     
     if args.augmentation:
+        logging.info('Use augmentation!')
         data_transform_train = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomRotation(degrees=10),
