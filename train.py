@@ -3,7 +3,7 @@ import sys
 import json
 import argparse
 import numpy as np
-from PIL import Image
+# from PIL import Image
 import logging
 import random
 import torch
@@ -37,6 +37,7 @@ def check_early_stopping(epochs_without_improvement, patience, epoch, total_epoc
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a Medmamba model.')
+    parser.add_argument('--medmb_size', type=str, default='T', choices=['T', 'S', 'B'], help='Choose medmb size: T, S, or B')
     parser.add_argument('--train_dir', type=str, required=True, help='Path to training dataset (folder or directory containing .npy files).')
     parser.add_argument('--val_dir', type=str, required=True, help='Path to validation dataset (folder or directory containing .npy files).')
     parser.add_argument('--num_classes', type=int, default=None, help='Number of output classes. If None and using NPZ, inferred from data.')
@@ -159,8 +160,10 @@ def main():
     print(f"Number of classes: {num_classes}")
     logging.info(f"Epochs: {epochs}, Batch Size: {batch_size}, Initial LR: {lr}")
     print(f"Epochs: {epochs}, Batch Size: {batch_size}, Initial LR: {lr}")
-
-    net = medmamba(num_classes=num_classes)
+    
+    if args.medmb_size == 'T': net = medmamba(depths=[2, 2, 4, 2],dims=[96,192,384,768],num_classes=num_classes)
+    elif args.medmb_size == 'S': net = medmamba(depths=[2, 2, 8, 2],dims=[96,192,384,768],num_classes=num_classes)
+    else: net = medmamba(depths=[2, 2, 12, 2],dims=[128,256,512,1024],num_classes=num_classes)
     net.to(device)
 
     loss_function = nn.CrossEntropyLoss()
