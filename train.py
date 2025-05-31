@@ -49,6 +49,7 @@ def parse_args():
     parser.add_argument('--patience', type=int, default=25, help='Patience for early stopping.')
     parser.add_argument('--save_dir', type=str, default='.', help='Directory to save checkpoints.')
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--augmentation', action='store_true', default=False)
     parser.add_argument('--use_early_stopping', action='store_true', default=False)
     return parser.parse_args()
 
@@ -81,14 +82,22 @@ def main():
         batch_size = args.batch_size if args.batch_size is not None else 64
         lr = args.lr if args.lr is not None else 0.0001
         lr_decay_epochs = []
-        
-    data_transform_train = transforms.Compose([
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(degrees=10),
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-    ])
+    
+    if args.augmentation:
+        data_transform_train = transforms.Compose([
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(degrees=10),
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+    else: 
+        data_transform_train = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        ])
+    
     data_transform_val = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
