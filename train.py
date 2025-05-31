@@ -165,6 +165,7 @@ def main():
     elif args.medmb_size == 'S': net = medmamba(depths=[2, 2, 8, 2],dims=[96,192,384,768],num_classes=num_classes)
     else: net = medmamba(depths=[2, 2, 12, 2],dims=[128,256,512,1024],num_classes=num_classes)
     logging.info(f'Model size: "{args.medmb_size}"')
+    print(f'Model size: "{args.medmb_size}"')
     net.to(device)
 
     loss_function = nn.CrossEntropyLoss()

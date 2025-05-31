@@ -1,15 +1,10 @@
 import os
 import sys
-import json
 import argparse
-import numpy as np
-from PIL import Image
 import logging
 
 import torch
-import torch.nn as nn
 from torchvision import transforms, datasets as torchvision_datasets
-import torch.optim as optim # Optimizer import is kept for consistency in checkpoint loading structure if needed, but not used for testing
 from tqdm import tqdm
 
 from MedMamba import VSSM as medmamba
@@ -114,6 +109,7 @@ def main_test():
     elif args.medmb_size == 'S': net = medmamba(depths=[2, 2, 8, 2],dims=[96,192,384,768],num_classes=num_classes)
     else: net = medmamba(depths=[2, 2, 12, 2],dims=[128,256,512,1024],num_classes=num_classes)
     logging.info(f'Model size: "{args.medmb_size}"')
+    print(f'Model size: "{args.medmb_size}"')
     net.to(device)
     net.load_state_dict(checkpoint['model_state_dict'])
     logging.info("Model state loaded successfully.")
