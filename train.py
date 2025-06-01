@@ -93,12 +93,12 @@ def main():
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
     else: 
+        logging.info('Not use augmentation!')
         data_transform_train = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
         ])
-    
     data_transform_val = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
