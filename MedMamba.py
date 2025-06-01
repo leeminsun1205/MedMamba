@@ -125,7 +125,6 @@ class SS2D(nn.Module):
         self,
         d_model,
         d_state=16,
-        # d_state="auto", # 20240109
         d_conv=3,
         expand=2,
         dt_rank="auto",
@@ -145,7 +144,6 @@ class SS2D(nn.Module):
         super().__init__()
         self.d_model = d_model
         self.d_state = d_state
-        # self.d_state = math.ceil(self.d_model / 6) if d_state == "auto" else d_model # 20240109
         self.d_conv = d_conv
         self.expand = expand
         self.d_inner = int(self.expand * self.d_model)
