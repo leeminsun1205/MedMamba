@@ -1,39 +1,103 @@
+import time
 import numpy as np
 import math
 from functools import partial
-from typing import Callable
+from typing import Optional, Callable
 from torch import Tensor
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 from einops import rearrange, repeat
-from timm.layers import DropPath, trunc_normal_
-from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
+from timm.layers import DropPath, to_2tuple, trunc_normal_
+from mamba_ssm.ops.selective_scan_interface import selective_scan_fn, selective_scan_ref
+
+
+# an alternative for mamba_ssm (in which causal_conv1d is needed)
+try:
+    from selective_scan import selective_scan_fn as selective_scan_fn_v1
+    from selective_scan import selective_scan_ref as selective_scan_ref_v1
+except:
+    pass
 
 DropPath.__repr__ = lambda self: f"timm.DropPath({self.drop_prob})"
 
-# =============================================================== #
 
 def flops_selective_scan_ref(B=1, L=256, D=768, N=16, with_D=True, with_Z=False, with_Group=True, with_complex=False):
+    """
+    u: r(B D L)
+    delta: r(B D L)
+    A: r(D N)
+    B: r(B N L)
+    C: r(B N L)
+    D: r(D)
+    z: r(B D L)
+    delta_bias: r(D), fp32
     
+    ignores:
+        [.float(), +, .softplus, .shape, new_zeros, repeat, stack, to(dtype), silu] 
+    """
+    
+    # fvcore.nn.jit_handles
     def get_flops_einsum(input_shapes, equation):
         np_arrs = [np.zeros(s) for s in input_shapes]
         optim = np.einsum_path(equation, *np_arrs, optimize="optimal")[1]
         for line in optim.split("\n"):
             if "optimized flop" in line.lower():
+                # divided by 2 because we count MAC (multiply-add counted as one flop)
                 flop = float(np.floor(float(line.split(":")[-1]) / 2))
                 return flop
+    
 
     assert not with_complex
 
-    flops = 0 
+    flops = 0 # below code flops = 0
+    if False:
+        ...
+        """
+        dtype_in = u.dtype
+        u = u.float()
+        delta = delta.float()
+        if delta_bias is not None:
+            delta = delta + delta_bias[..., None].float()
+        if delta_softplus:
+            delta = F.softplus(delta)
+        batch, dim, dstate = u.shape[0], A.shape[0], A.shape[1]
+        is_variable_B = B.dim() >= 3
+        is_variable_C = C.dim() >= 3
+        if A.is_complex():
+            if is_variable_B:
+                B = torch.view_as_complex(rearrange(B.float(), "... (L two) -> ... L two", two=2))
+            if is_variable_C:
+                C = torch.view_as_complex(rearrange(C.float(), "... (L two) -> ... L two", two=2))
+        else:
+            B = B.float()
+            C = C.float()
+        x = A.new_zeros((batch, dim, dstate))
+        ys = []
+        """
 
     flops += get_flops_einsum([[B, D, L], [D, N]], "bdl,dn->bdln")
     if with_Group:
         flops += get_flops_einsum([[B, D, L], [B, N, L], [B, D, L]], "bdl,bnl,bdl->bdln")
     else:
         flops += get_flops_einsum([[B, D, L], [B, D, N, L], [B, D, L]], "bdl,bdnl,bdl->bdln")
+    if False:
+        ...
+        """
+        deltaA = torch.exp(torch.einsum('bdl,dn->bdln', delta, A))
+        if not is_variable_B:
+            deltaB_u = torch.einsum('bdl,dn,bdl->bdln', delta, B, u)
+        else:
+            if B.dim() == 3:
+                deltaB_u = torch.einsum('bdl,bnl,bdl->bdln', delta, B, u)
+            else:
+                B = repeat(B, "B G N L -> B (G H) N L", H=dim // B.shape[1])
+                deltaB_u = torch.einsum('bdl,bdnl,bdl->bdln', delta, B, u)
+        if is_variable_C and C.dim() == 4:
+            C = repeat(C, "B G N L -> B (G H) N L", H=dim // C.shape[1])
+        last_state = None
+        """
     
     in_for_flops = B * D * N   
     if with_Group:
@@ -41,16 +105,42 @@ def flops_selective_scan_ref(B=1, L=256, D=768, N=16, with_D=True, with_Z=False,
     else:
         in_for_flops += get_flops_einsum([[B, D, N], [B, N]], "bdn,bn->bd")
     flops += L * in_for_flops 
+    if False:
+        ...
+        """
+        for i in range(u.shape[2]):
+            x = deltaA[:, :, i] * x + deltaB_u[:, :, i]
+            if not is_variable_C:
+                y = torch.einsum('bdn,dn->bd', x, C)
+            else:
+                if C.dim() == 3:
+                    y = torch.einsum('bdn,bn->bd', x, C[:, :, i])
+                else:
+                    y = torch.einsum('bdn,bdn->bd', x, C[:, :, :, i])
+            if i == u.shape[2] - 1:
+                last_state = x
+            if y.is_complex():
+                y = y.real * 2
+            ys.append(y)
+        y = torch.stack(ys, dim=2) # (batch dim L)
+        """
 
     if with_D:
         flops += B * D * L
     if with_Z:
         flops += B * D * L
+    if False:
+        ...
+        """
+        out = y if D is None else y + u * rearrange(D, "d -> d 1")
+        if z is not None:
+            out = out * F.silu(z)
+        out = out.to(dtype=dtype_in)
+        """
     
     return flops
 
-# =============================================================== #
-# Don't need change
+
 class PatchEmbed2D(nn.Module):
     r""" Image to Patch Embedding
     Args:
@@ -75,7 +165,7 @@ class PatchEmbed2D(nn.Module):
             x = self.norm(x)
         return x
 
-# Don't need change
+
 class PatchMerging2D(nn.Module):
     r""" Patch Merging Layer.
     Args:
@@ -117,8 +207,43 @@ class PatchMerging2D(nn.Module):
         x = self.reduction(x)
 
         return x
+    
 
-# =============================================================== #
+class PatchExpand2D(nn.Module):
+    def __init__(self, dim, dim_scale=2, norm_layer=nn.LayerNorm):
+        super().__init__()
+        self.dim = dim*2
+        self.dim_scale = dim_scale
+        self.expand = nn.Linear(self.dim, dim_scale*self.dim, bias=False)
+        self.norm = norm_layer(self.dim // dim_scale)
+
+    def forward(self, x):
+        B, H, W, C = x.shape
+        x = self.expand(x)
+
+        x = rearrange(x, 'b h w (p1 p2 c)-> b (h p1) (w p2) c', p1=self.dim_scale, p2=self.dim_scale, c=C//self.dim_scale)
+        x= self.norm(x)
+
+        return x
+    
+
+class Final_PatchExpand2D(nn.Module):
+    def __init__(self, dim, dim_scale=4, norm_layer=nn.LayerNorm):
+        super().__init__()
+        self.dim = dim
+        self.dim_scale = dim_scale
+        self.expand = nn.Linear(self.dim, dim_scale*self.dim, bias=False)
+        self.norm = norm_layer(self.dim // dim_scale)
+
+    def forward(self, x):
+        B, H, W, C = x.shape
+        x = self.expand(x)
+
+        x = rearrange(x, 'b h w (p1 p2 c)-> b (h p1) (w p2) c', p1=self.dim_scale, p2=self.dim_scale, c=C//self.dim_scale)
+        x= self.norm(x)
+
+        return x
+
 
 class SS2D(nn.Module):
     def __init__(
@@ -287,6 +412,45 @@ class SS2D(nn.Module):
 
         return out_y[:, 0], inv_y[:, 0], wh_y, invwh_y
 
+    # an alternative to forward_corev1
+    def forward_corev1(self, x: torch.Tensor):
+        self.selective_scan = selective_scan_fn_v1
+
+        B, C, H, W = x.shape
+        L = H * W
+        K = 4
+
+        x_hwwh = torch.stack([x.view(B, -1, L), torch.transpose(x, dim0=2, dim1=3).contiguous().view(B, -1, L)], dim=1).view(B, 2, -1, L)
+        xs = torch.cat([x_hwwh, torch.flip(x_hwwh, dims=[-1])], dim=1) # (b, k, d, l)
+
+        x_dbl = torch.einsum("b k d l, k c d -> b k c l", xs.view(B, K, -1, L), self.x_proj_weight)
+        # x_dbl = x_dbl + self.x_proj_bias.view(1, K, -1, 1)
+        dts, Bs, Cs = torch.split(x_dbl, [self.dt_rank, self.d_state, self.d_state], dim=2)
+        dts = torch.einsum("b k r l, k d r -> b k d l", dts.view(B, K, -1, L), self.dt_projs_weight)
+        # dts = dts + self.dt_projs_bias.view(1, K, -1, 1)
+
+        xs = xs.float().view(B, -1, L) # (b, k * d, l)
+        dts = dts.contiguous().float().view(B, -1, L) # (b, k * d, l)
+        Bs = Bs.float().view(B, K, -1, L) # (b, k, d_state, l)
+        Cs = Cs.float().view(B, K, -1, L) # (b, k, d_state, l)
+        Ds = self.Ds.float().view(-1) # (k * d)
+        As = -torch.exp(self.A_logs.float()).view(-1, self.d_state)  # (k * d, d_state)
+        dt_projs_bias = self.dt_projs_bias.float().view(-1) # (k * d)
+
+        out_y = self.selective_scan(
+            xs, dts, 
+            As, Bs, Cs, Ds,
+            delta_bias=dt_projs_bias,
+            delta_softplus=True,
+        ).view(B, K, -1, L)
+        assert out_y.dtype == torch.float
+
+        inv_y = torch.flip(out_y[:, 2:4], dims=[-1]).view(B, 2, -1, L)
+        wh_y = torch.transpose(out_y[:, 1].view(B, -1, W, H), dim0=2, dim1=3).contiguous().view(B, -1, L)
+        invwh_y = torch.transpose(inv_y[:, 1].view(B, -1, W, H), dim0=2, dim1=3).contiguous().view(B, -1, L)
+
+        return out_y[:, 0], inv_y[:, 0], wh_y, invwh_y
+
     def forward(self, x: torch.Tensor, **kwargs):
         B, H, W, C = x.shape
 
@@ -312,6 +476,8 @@ def channel_shuffle(x: Tensor, groups: int) -> Tensor:
     batch_size, height, width, num_channels = x.size()
     channels_per_group = num_channels // groups
 
+    # reshape
+    # [batch_size, num_channels, height, width] -> [batch_size, groups, channels_per_group, height, width]
     x = x.view(batch_size, height, width, groups, channels_per_group)
 
     x = torch.transpose(x, 3, 4).contiguous()
@@ -347,7 +513,7 @@ class SS_Conv_SSM(nn.Module):
             nn.Conv2d(in_channels=hidden_dim // 2, out_channels=hidden_dim // 2, kernel_size=1, stride=1),
             nn.ReLU()
         )
-
+        # self.finalconv11 = nn.Conv2d(in_channels=hidden_dim, out_channels=hidden_dim, kernel_size=1, stride=1)
     def forward(self, input: torch.Tensor):
         input_left, input_right = input.chunk(2,dim=-1)
         x = self.drop_path(self.self_attention(self.ln_1(input_right)))
@@ -357,6 +523,7 @@ class SS_Conv_SSM(nn.Module):
         output = torch.cat((input_left,x),dim=-1)
         output = channel_shuffle(output,groups=2)
         return output+input
+
 
 class VSSLayer(nn.Module):
     """ A basic Swin Transformer layer for one stage.
@@ -422,9 +589,77 @@ class VSSLayer(nn.Module):
             x = self.downsample(x)
 
         return x
+    
+
+
+class VSSLayer_up(nn.Module):
+    """ A basic Swin Transformer layer for one stage.
+    Args:
+        dim (int): Number of input channels.
+        depth (int): Number of blocks.
+        drop (float, optional): Dropout rate. Default: 0.0
+        attn_drop (float, optional): Attention dropout rate. Default: 0.0
+        drop_path (float | tuple[float], optional): Stochastic depth rate. Default: 0.0
+        norm_layer (nn.Module, optional): Normalization layer. Default: nn.LayerNorm
+        downsample (nn.Module | None, optional): Downsample layer at the end of the layer. Default: None
+        use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
+    """
+
+    def __init__(
+        self, 
+        dim, 
+        depth, 
+        attn_drop=0.,
+        drop_path=0., 
+        norm_layer=nn.LayerNorm, 
+        upsample=None, 
+        use_checkpoint=False, 
+        d_state=16,
+        **kwargs,
+    ):
+        super().__init__()
+        self.dim = dim
+        self.use_checkpoint = use_checkpoint
+
+        self.blocks = nn.ModuleList([
+            SS_Conv_SSM(
+                hidden_dim=dim,
+                drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
+                norm_layer=norm_layer,
+                attn_drop_rate=attn_drop,
+                d_state=d_state,
+            )
+            for i in range(depth)])
+        
+        if True: # is this really applied? Yes, but been overriden later in VSSM!
+            def _init_weights(module: nn.Module):
+                for name, p in module.named_parameters():
+                    if name in ["out_proj.weight"]:
+                        p = p.clone().detach_() # fake init, just to keep the seed ....
+                        nn.init.kaiming_uniform_(p, a=math.sqrt(5))
+            self.apply(_init_weights)
+
+        if upsample is not None:
+            self.upsample = upsample(dim=dim, norm_layer=norm_layer)
+        else:
+            self.upsample = None
+
+
+    def forward(self, x):
+        if self.upsample is not None:
+            x = self.upsample(x)
+        for blk in self.blocks:
+            if self.use_checkpoint:
+                x = checkpoint.checkpoint(blk, x)
+            else:
+                x = blk(x)
+        return x
+    
+
+
 class VSSM(nn.Module):
-    def __init__(self, patch_size=4, in_chans=3, num_classes=1000, depths=[2, 2, 4, 2],
-                 dims=[96,192,384,768], d_state=16, drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
+    def __init__(self, patch_size=4, in_chans=3, num_classes=1000, depths=[2, 2, 4, 2], depths_decoder=[2, 9, 2, 2],
+                 dims=[96,192,384,768], dims_decoder=[768, 384, 192, 96], d_state=16, drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
                  norm_layer=nn.LayerNorm, patch_norm=True,
                  use_checkpoint=False, **kwargs):
         super().__init__()
@@ -450,6 +685,7 @@ class VSSM(nn.Module):
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
+        dpr_decoder = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths_decoder))][::-1]
 
         self.layers = nn.ModuleList()
         for i_layer in range(self.num_layers):
@@ -466,6 +702,8 @@ class VSSM(nn.Module):
             )
             self.layers.append(layer)
 
+
+        # self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
 
@@ -515,3 +753,12 @@ class VSSM(nn.Module):
         x = torch.flatten(x,start_dim=1)
         x = self.head(x)
         return x
+
+
+medmamba_t = VSSM(depths=[2, 2, 4, 2],dims=[96,192,384,768],num_classes=6).to("cuda")
+medmamba_s = VSSM(depths=[2, 2, 8, 2],dims=[96,192,384,768],num_classes=6).to("cuda")
+medmamba_b = VSSM(depths=[2, 2, 12, 2],dims=[128,256,512,1024],num_classes=6).to("cuda")
+
+data = torch.randn(1,3,224,224).to("cuda")
+
+print(medmamba_t(data).shape)
