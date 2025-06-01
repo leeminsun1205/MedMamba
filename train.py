@@ -85,6 +85,7 @@ def main():
     
     if args.augmentation:
         logging.info('Use augmentation!')
+        print('Use augmentation!')
         data_transform_train = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomRotation(degrees=10),
@@ -94,6 +95,7 @@ def main():
         ])
     else: 
         logging.info('Not use augmentation!')
+        print('Not use augmentation!')
         data_transform_train = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
