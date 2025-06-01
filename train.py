@@ -51,6 +51,7 @@ def parse_args():
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--augmentation', action='store_true', default=False)
     parser.add_argument('--use_early_stopping', action='store_true', default=False)
+    parser.add_argument('--attn_drop_rate', type=float, default=0.0)
     return parser.parse_args()
 
 def main():
@@ -175,9 +176,9 @@ def main():
     logging.info(f"Epochs: {epochs}, Batch Size: {batch_size}, Initial LR: {lr}")
     print(f"Epochs: {epochs}, Batch Size: {batch_size}, Initial LR: {lr}")
     
-    if args.medmb_size == 'T': net = medmamba(depths=[2, 2, 4, 2],dims=[96,192,384,768],num_classes=num_classes)
-    elif args.medmb_size == 'S': net = medmamba(depths=[2, 2, 8, 2],dims=[96,192,384,768],num_classes=num_classes)
-    else: net = medmamba(depths=[2, 2, 12, 2],dims=[128,256,512,1024],num_classes=num_classes)
+    if args.medmb_size == 'T': net = medmamba(depths=[2, 2, 4, 2],dims=[96,192,384,768],num_classes=num_classes,attn_drop_rate=args.attn_drop_rate)
+    elif args.medmb_size == 'S': net = medmamba(depths=[2, 2, 8, 2],dims=[96,192,384,768],num_classes=num_classes,attn_drop_rate=args.attn_drop_rate)
+    else: net = medmamba(depths=[2, 2, 12, 2],dims=[128,256,512,1024],num_classes=num_classes,attn_drop_rate=args.attn_drop_rate)
     logging.info(f'Model size: "{args.medmb_size}"')
     print(f'Model size: "{args.medmb_size}"')
     net.to(device)

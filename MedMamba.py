@@ -304,7 +304,7 @@ class SS2D(nn.Module):
             out = self.dropout(out)
         return out
 
-
+# Don't need change
 def channel_shuffle(x: Tensor, groups: int) -> Tensor:
 
     batch_size, height, width, num_channels = x.size()
@@ -338,12 +338,12 @@ class SS_Conv_SSM(nn.Module):
             nn.BatchNorm2d(hidden_dim // 2),
             nn.Conv2d(in_channels=hidden_dim//2,out_channels=hidden_dim//2,kernel_size=3,stride=1,padding=1),
             nn.BatchNorm2d(hidden_dim//2),
-            nn.ReLU(),
+            nn.GELU(), # nn.SiLU(), nn.GELU(), ReLU
             nn.Conv2d(in_channels=hidden_dim // 2, out_channels=hidden_dim // 2, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(hidden_dim // 2),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Conv2d(in_channels=hidden_dim // 2, out_channels=hidden_dim // 2, kernel_size=1, stride=1),
-            nn.ReLU()
+            nn.GELU()
         )
 
     def forward(self, input: torch.Tensor):
