@@ -37,7 +37,7 @@ def check_early_stopping(epochs_without_improvement, patience, epoch, total_epoc
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a Medmamba model.')
-    parser.add_argument('--medmb_size', type=str, default='T', choices=['T', 'S', 'B'], help='Choose medmb size: T, S, or B')
+    parser.add_argument('--medmb_size', type=str, default='T', choices=['T', 'S', 'B', 'Te'], help='Choose medmb size: T, S, or B, Te')
     parser.add_argument('--train_dir', type=str, required=True, help='Path to training dataset (folder or directory containing .npy files).')
     parser.add_argument('--val_dir', type=str, required=True, help='Path to validation dataset (folder or directory containing .npy files).')
     parser.add_argument('--num_classes', type=int, default=None, help='Number of output classes. If None and using NPZ, inferred from data.')
@@ -178,7 +178,8 @@ def main():
     
     if args.medmb_size == 'T': net = medmamba(depths=[2, 2, 4, 2],dims=[96,192,384,768],num_classes=num_classes,attn_drop_rate=args.attn_drop_rate)
     elif args.medmb_size == 'S': net = medmamba(depths=[2, 2, 8, 2],dims=[96,192,384,768],num_classes=num_classes,attn_drop_rate=args.attn_drop_rate)
-    else: net = medmamba(depths=[2, 2, 12, 2],dims=[128,256,512,1024],num_classes=num_classes,attn_drop_rate=args.attn_drop_rate)
+    elif args.medmb_size == 'B': net = medmamba(depths=[2, 2, 12, 2],dims=[128,256,512,1024],num_classes=num_classes,attn_drop_rate=args.attn_drop_rate)
+    else: net = medmamba(depths=[2, 3, 3, 2],dims=[96,288,288,768],num_classes=num_classes,attn_drop_rate=args.attn_drop_rate)
     logging.info(f'Model size: "{args.medmb_size}"')
     print(f'Model size: "{args.medmb_size}"')
     net.to(device)
