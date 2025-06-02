@@ -179,7 +179,7 @@ def main():
     if args.medmb_size == 'T': net = medmamba(depths=[2, 2, 4, 2],dims=[96,192,384,768],num_classes=num_classes,attn_drop_rate=args.attn_drop_rate)
     elif args.medmb_size == 'S': net = medmamba(depths=[2, 2, 8, 2],dims=[96,192,384,768],num_classes=num_classes,attn_drop_rate=args.attn_drop_rate)
     elif args.medmb_size == 'B': net = medmamba(depths=[2, 2, 12, 2],dims=[128,256,512,1024],num_classes=num_classes,attn_drop_rate=args.attn_drop_rate)
-    else: net = medmamba(depths=[2, 3, 3, 2],dims=[96,288,288,768],num_classes=num_classes,attn_drop_rate=args.attn_drop_rate)
+    else: net = medmamba(depths=[2, 3, 3, 2],dims=[96,192,384,768],num_classes=num_classes,attn_drop_rate=args.attn_drop_rate)
     logging.info(f'Model size: "{args.medmb_size}"')
     print(f'Model size: "{args.medmb_size}"')
     net.to(device)
