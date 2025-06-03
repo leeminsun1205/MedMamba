@@ -339,9 +339,9 @@ class SS_Conv_SSM(nn.Module):
             nn.Conv2d(in_channels=hidden_dim//2,out_channels=hidden_dim//2,kernel_size=3,stride=1,padding=1),
             nn.BatchNorm2d(hidden_dim//2),
             nn.ReLU(), # nn.SiLU(), nn.GELU(), ReLU
-            # nn.Conv2d(in_channels=hidden_dim // 2, out_channels=hidden_dim // 2, kernel_size=3, stride=1, padding=1),
-            # nn.BatchNorm2d(hidden_dim // 2),
-            # nn.ReLU(),
+            nn.Conv2d(in_channels=hidden_dim // 2, out_channels=hidden_dim // 2, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(hidden_dim // 2),
+            nn.ReLU(),
             nn.Conv2d(in_channels=hidden_dim // 2, out_channels=hidden_dim // 2, kernel_size=1, stride=1),
             nn.ReLU()
         )
