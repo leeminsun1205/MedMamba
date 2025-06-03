@@ -195,11 +195,11 @@ def main_test():
 
 
     print("\n--- Evaluation Metrics ---")
-    print(f"Overall Accuracy: {overall_accuracy:.4f*100}")
-    print(f"Precision (Macro): {precision_macro:.4f*100}")
-    print(f"Sensitivity/Recall (Macro): {sensitivity_macro:.4f*100}")
-    print(f"Specificity (Macro): {specificity_macro:.4f*100}")
-    print(f"F1-score (Macro): {f1_macro:.4f*100}")
+    print(f"Overall Accuracy: {overall_accuracy*100:.2f}")
+    print(f"Precision (Macro): {precision_macro*100:.2f}")
+    print(f"Sensitivity/Recall (Macro): {sensitivity_macro*100:.2f}")
+    print(f"Specificity (Macro): {specificity_macro*100:.2f}")
+    print(f"F1-score (Macro): {f1_macro*100:.2f}")
     print(f"AUC (Macro OvR): {auc_score if isinstance(auc_score, str) else auc_score:.3f}")
     print("-------------------------\n")
 
