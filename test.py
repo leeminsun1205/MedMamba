@@ -103,7 +103,7 @@ def main_test():
         net = medmamba(depths=[2, 2, 12, 2], dims=[128,256,512,1024], num_classes=num_classes)
     elif args.medmb_size == 'Te': # Giả sử 'Te' là một cấu hình tùy chỉnh bạn đã thử
         # Ví dụ cấu hình tùy chỉnh, bạn cần thay đổi cho phù hợp với thử nghiệm của mình
-        net = medmamba(depths=[2, 3, 3, 2],dims=[96,288,288,768],num_classes=num_classes)
+        net = medmamba(depths=[2, 3, 3, 2],dims=[96,192,384,768],num_classes=num_classes)
         # Hoặc nếu 'Te' chỉ là để dùng cấu hình mặc định của 'else' trước đó:
         # net = medmamba(depths=[2, 3, 3, 2],dims=[96,192,384,768],num_classes=num_classes)
     else: # Xử lý trường hợp không mong muốn, hoặc bạn có thể bỏ qua nếu choices đã bao gồm hết
