@@ -409,8 +409,6 @@ def main_app():
                 with col_img2:
                     st.image(cam_image, caption=f"Grad-CAM cho lớp: {target_gradcam_class_name_display}", use_container_width=True)
     
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("Được hỗ trợ bởi Đối tác Lập trình Gemini")
 
 if __name__ == '__main__':
     main_app()
