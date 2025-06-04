@@ -354,6 +354,17 @@ def main_app(): #
         
         # Thông tin dự đoán hiển thị ở trên
         st.subheader("Kết Quả Dự Đoán:") #
+        target_idx_int = -1
+        try:
+            target_idx_int = int(target_category_input_gradcam)
+        except:
+            pass
+
+        if st.session_state.class_indices and str(target_idx_int) in st.session_state.class_indices:
+            target_class_name = st.session_state.class_indices[str(target_idx_int)]
+            st.markdown(f"**Tên Lớp Mục Tiêu:** `{target_class_name}`")
+        elif target_idx_int >= 0:
+            st.markdown(f"**Tên Lớp Mục Tiêu:** _(Không xác định - không có ánh xạ tên lớp cho index này)_")
         st.markdown(f"**Lớp Dự Đoán:** `{last_prediction_info['class_name']}` (Index: {last_prediction_info['predicted_idx']})") #
         st.markdown(f"**Độ Tin Cậy:** `{last_prediction_info['confidence']:.4f}`") #
 
