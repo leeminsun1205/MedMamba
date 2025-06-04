@@ -179,16 +179,16 @@ def main_app(): #
         value=st.session_state.checkpoint_path_input, #
         help="Cung cấp đường dẫn đầy đủ đến tệp checkpoint của mô hình MedMamba." #
     )
-    st.session_state.class_indices_path_input = st.sidebar.text_input( #
-        "Đường dẫn đến Class Indices (.json) (Tùy chọn)", 
-        value=st.session_state.class_indices_path_input, #
-        help="Tệp JSON chứa ánh xạ từ index sang tên lớp." #
-    )
-    st.session_state.num_classes_input = st.sidebar.number_input( #
-        "Số Lượng Lớp (nếu không có trong checkpoint)", 
-        min_value=1, value=st.session_state.num_classes_input, step=1, #
-        help="Số lớp đầu ra của mô hình. Sẽ được ghi đè nếu checkpoint chứa thông tin này." #
-    )
+    # st.session_state.class_indices_path_input = st.sidebar.text_input( #
+    #     "Đường dẫn đến Class Indices (.json) (Tùy chọn)", 
+    #     value=st.session_state.class_indices_path_input, #
+    #     help="Tệp JSON chứa ánh xạ từ index sang tên lớp." #
+    # )
+    # st.session_state.num_classes_input = st.sidebar.number_input( #
+    #     "Số Lượng Lớp (nếu không có trong checkpoint)", 
+    #     min_value=1, value=st.session_state.num_classes_input, step=1, #
+    #     help="Số lớp đầu ra của mô hình. Sẽ được ghi đè nếu checkpoint chứa thông tin này." #
+    # )
 
     if 'model' not in st.session_state: #
         st.session_state.model = None #
@@ -200,7 +200,7 @@ def main_app(): #
         st.session_state.image_to_display_caption = "" # Thêm để lưu caption ảnh gốc
         st.session_state.image_to_display_pil = None # Thêm để lưu ảnh gốc PIL
 
-    if st.sidebar.button("Nạp Mô Hình & Class Indices", key="load_model_button"): #
+    if st.sidebar.button("Nạp Mô Hình", key="load_model_button"): #
         st.session_state.model = None  #
         st.session_state.last_prediction_info = None  #
         st.session_state.image_to_display_pil = None #
