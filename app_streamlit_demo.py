@@ -5,8 +5,8 @@ from torchvision import transforms
 import os
 import random
 import json
-import cv2
-import numpy as np
+# import cv2 # Không thấy cv2 được sử dụng trực tiếp, có thể bỏ nếu không cần
+# import numpy as np # Tương tự, có thể bỏ nếu không cần
 
 # Giả sử các file utils.py của grad_cam nằm trong thư mục MedMamba/grad_cam/
 # và app_streamlit_demo.py nằm trong MedMamba/
@@ -154,11 +154,13 @@ def predict(model, device, image_pil, transform, class_indices):
         predicted_idx = predicted_idx_tensor.item()
         predicted_confidence = predicted_prob_tensor.item()
 
-    predicted_class_name = str(predicted_idx)
-    if class_indices:
-        predicted_class_name = class_indices.get(str(predicted_idx), f"Lớp không xác định (Index: {predicted_idx})")
+    predicted_class_name_display = str(predicted_idx) # Hiển thị index nếu không có tên
+    if class_indices and str(predicted_idx) in class_indices:
+        predicted_class_name_display = class_indices[str(predicted_idx)]
+    elif class_indices: # Có class_indices nhưng index dự đoán không có trong đó
+        predicted_class_name_display = f"Lớp không xác định (Index: {predicted_idx})"
     
-    return predicted_class_name, predicted_confidence, predicted_idx
+    return predicted_class_name_display, predicted_confidence, predicted_idx
 
 # --- Giao diện Streamlit ---
 def main_app():
@@ -172,42 +174,32 @@ def main_app():
     if 'class_indices_path_input' not in st.session_state:
         st.session_state.class_indices_path_input = "class_indices.json"
     if 'num_classes_input' not in st.session_state:
-        st.session_state.num_classes_input = 3
+        st.session_state.num_classes_input = 3 # Giá trị mặc định
     
     st.session_state.checkpoint_path_input = st.sidebar.text_input(
         "Đường dẫn đến Checkpoint (.pth)", 
         value=st.session_state.checkpoint_path_input,
         help="Cung cấp đường dẫn đầy đủ đến tệp checkpoint của mô hình MedMamba."
     )
-    # st.session_state.class_indices_path_input = st.sidebar.text_input(
-    #     "Đường dẫn đến Class Indices (.json) (Tùy chọn)", 
-    #     value=st.session_state.class_indices_path_input,
-    #     help="Tệp JSON chứa ánh xạ từ index sang tên lớp."
-    # )
-    # st.session_state.num_classes_input = st.sidebar.number_input(
-    #     "Số Lượng Lớp (nếu không có trong checkpoint)", 
-    #     min_value=1, value=st.session_state.num_classes_input, step=1,
-    #     help="Số lớp đầu ra của mô hình. Sẽ được ghi đè nếu checkpoint chứa thông tin này."
-    # )
 
-    if 'model' not in st.session_state:
+    if 'model' not in st.session_state: # Khởi tạo các session_state liên quan đến model
         st.session_state.model = None
         st.session_state.device = None
-        st.session_state.class_indices = None
+        st.session_state.class_indices = None # Sẽ được nạp từ checkpoint hoặc file
         st.session_state.num_classes_loaded = st.session_state.num_classes_input
         st.session_state.model_loaded_path = ""
         st.session_state.last_prediction_info = None
-        st.session_state.image_to_display_caption = "" # Thêm để lưu caption ảnh gốc
-        st.session_state.image_to_display_pil = None # Thêm để lưu ảnh gốc PIL
+        st.session_state.image_to_display_caption = ""
+        st.session_state.image_to_display_pil = None
 
     if st.sidebar.button("Nạp Mô Hình", key="load_model_button"):
         st.session_state.model = None 
         st.session_state.last_prediction_info = None 
-        st.session_state.image_to_display_pil = None
+        st.session_state.image_to_display_pil = None # Reset ảnh khi nạp lại model
         if st.session_state.checkpoint_path_input:
             model, device, class_indices_from_ckpt, num_classes_final = load_medmamba_model(
                 st.session_state.checkpoint_path_input, 
-                st.session_state.num_classes_input
+                st.session_state.num_classes_input # Truyền num_classes_input làm fallback
             )
             
             if model and device:
@@ -216,6 +208,7 @@ def main_app():
                 st.session_state.num_classes_loaded = num_classes_final
                 st.session_state.model_loaded_path = st.session_state.checkpoint_path_input
 
+                # Ưu tiên class_indices từ file nếu có, sau đó từ checkpoint
                 class_indices_from_file = load_class_indices_from_file(st.session_state.class_indices_path_input)
                 if class_indices_from_file:
                     st.session_state.class_indices = class_indices_from_file
@@ -224,10 +217,8 @@ def main_app():
                     st.sidebar.info("Đã sử dụng class_indices từ checkpoint.")
                 else:
                     st.session_state.class_indices = None
-                    st.sidebar.warning("Không tìm thấy class_indices. Dự đoán sẽ chỉ hiển thị index của lớp.")
-            else:
-                st.session_state.model = None
-                st.session_state.class_indices = None
+                    st.sidebar.warning("Không tìm thấy class_indices (từ file hoặc checkpoint). Dự đoán sẽ chỉ hiển thị index của lớp.")
+            # else: Lỗi đã được hiển thị trong load_medmamba_model
         else:
             st.sidebar.error("Vui lòng cung cấp đường dẫn đến checkpoint.")
 
@@ -238,7 +229,7 @@ def main_app():
     st.success(f"Mô hình **{os.path.basename(st.session_state.model_loaded_path)}** đã được nạp và sẵn sàng!")
     st.info(f"Số lớp của mô hình: **{st.session_state.num_classes_loaded}**")
     if st.session_state.class_indices:
-        st.write("Các lớp được phát hiện:")
+        st.write("Các lớp được phát hiện (từ class_indices):")
         st.json(st.session_state.class_indices, expanded=False)
     
     img_transform = get_transform()
@@ -253,6 +244,7 @@ def main_app():
         horizontal=True
     )
 
+    # Xử lý việc chọn ảnh và nút bấm
     if prediction_mode == "Tải Ảnh Lên":
         uploaded_file = st.file_uploader(
             "Chọn một hình ảnh...", 
@@ -263,7 +255,7 @@ def main_app():
         if uploaded_file is not None:
             try:
                 st.session_state.image_to_display_pil = Image.open(uploaded_file).convert('RGB')
-                st.session_state.image_to_display_caption = "Ảnh Đã Tải Lên"
+                st.session_state.image_to_display_caption = f"Ảnh Đã Tải Lên: {uploaded_file.name}"
             except Exception as e:
                 st.error(f"Lỗi xử lý ảnh tải lên: {e}")
                 st.session_state.image_to_display_pil = None
@@ -273,13 +265,13 @@ def main_app():
             st.session_state.test_dir_input = "PATH_TO_YOUR_TEST_IMAGE_FOLDER"
 
         st.session_state.test_dir_input = st.text_input(
-            "Đường dẫn đến Thư Mục Ảnh Test", 
+            "Đường dẫn đến Thư Mục Ảnh Test (có cấu trúc lớp con)", 
             value=st.session_state.test_dir_input,
-            help="Cung cấp đường dẫn đến thư mục chứa các ảnh để chọn ngẫu nhiên."
+            help="Cung cấp đường dẫn đến thư mục chứa các ảnh. Tên thư mục con trực tiếp chứa ảnh sẽ được dùng làm tên lớp thực tế."
         )
 
         if st.button("Lấy Ảnh Ngẫu Nhiên, Dự Đoán & Hiện Grad-CAM", key="random_predict_gradcam_button"):
-            st.session_state.last_prediction_info = None
+            st.session_state.last_prediction_info = None 
             st.session_state.image_to_display_pil = None
             if not os.path.isdir(st.session_state.test_dir_input):
                 st.error(f"Không tìm thấy thư mục: {st.session_state.test_dir_input}")
@@ -288,127 +280,205 @@ def main_app():
                 for root, _, files in os.walk(st.session_state.test_dir_input):
                     for file in files:
                         if file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
-                            image_files.append(os.path.join(root, file))
+                            # Đảm bảo chỉ lấy ảnh từ thư mục con trực tiếp (không phải root của test_dir)
+                            if os.path.dirname(root) == st.session_state.test_dir_input or os.path.dirname(root) == st.session_state.test_dir_input.rstrip('/\\'):
+                                image_files.append(os.path.join(root, file))
                 
                 if not image_files:
-                    st.warning(f"Không tìm thấy tệp ảnh nào trong thư mục: {st.session_state.test_dir_input}")
+                    st.warning(f"Không tìm thấy tệp ảnh nào trong các thư mục con trực tiếp của: {st.session_state.test_dir_input}")
                 else:
                     random_image_path = random.choice(image_files)
                     try:
                         random_pil_image = Image.open(random_image_path).convert('RGB')
                         st.session_state.image_to_display_pil = random_pil_image
-                        st.session_state.image_to_display_caption = f"Ảnh Ngẫu Nhiên: {os.path.basename(random_image_path)}"
+                        st.session_state.image_to_display_caption = f"Ảnh Ngẫu Nhiên: {os.path.basename(random_image_path)} (Từ: {os.path.basename(os.path.dirname(random_image_path))})"
                         
+                        # Trích xuất nhãn thực tế từ tên thư mục
+                        ground_truth_class_name_from_folder = os.path.basename(os.path.dirname(random_image_path))
+                        ground_truth_class_idx = None
+                        if st.session_state.class_indices:
+                            for idx_str, name_in_indices in st.session_state.class_indices.items():
+                                if name_in_indices == ground_truth_class_name_from_folder:
+                                    try:
+                                        ground_truth_class_idx = int(idx_str)
+                                        break
+                                    except ValueError: pass 
+                            if ground_truth_class_idx is None:
+                                st.info(f"Tên lớp từ thư mục '{ground_truth_class_name_from_folder}' không khớp với class_indices. Không thể tự động xác định lớp thực tế.")
+                        else:
+                            st.info("Không có class_indices, không thể tự động xác định lớp thực tế từ tên thư mục.")
+
                         with st.spinner("Đang dự đoán..."):
-                            class_name, confidence, class_idx = predict(
-                                st.session_state.model,
-                                st.session_state.device,
-                                st.session_state.image_to_display_pil,
-                                img_transform,
-                                st.session_state.class_indices
+                            pred_name, pred_conf, pred_idx = predict(
+                                st.session_state.model, st.session_state.device,
+                                random_pil_image, img_transform, st.session_state.class_indices
                             )
                         st.session_state.last_prediction_info = {
-                            "image_pil": st.session_state.image_to_display_pil,
+                            "image_pil": random_pil_image,
                             "image_caption": st.session_state.image_to_display_caption,
-                            "class_name": class_name,
-                            "confidence": confidence,
-                            "predicted_idx": class_idx
+                            "predicted_class_display_name": pred_name,
+                            "predicted_confidence": pred_conf,
+                            "predicted_idx": pred_idx,
+                            "ground_truth_class_name_from_folder": ground_truth_class_name_from_folder,
+                            "ground_truth_class_idx": ground_truth_class_idx # Có thể là None
                         }
                     except Exception as e:
                         st.error(f"Lỗi xử lý ảnh {random_image_path}: {e}")
                         st.session_state.image_to_display_pil = None
     
+    # Nút "Thực Hiện Dự Đoán" cho ảnh tải lên
     if prediction_mode == "Tải Ảnh Lên" and st.session_state.image_to_display_pil:
         if st.button("Thực Hiện Dự Đoán & Hiện Grad-CAM", key="upload_predict_gradcam_button"):
-            st.session_state.last_prediction_info = None
+            st.session_state.last_prediction_info = None # Reset
             with st.spinner("Đang dự đoán..."):
-                class_name, confidence, class_idx = predict(
-                    st.session_state.model,
-                    st.session_state.device,
-                    st.session_state.image_to_display_pil,
-                    img_transform,
-                    st.session_state.class_indices
+                pred_name, pred_conf, pred_idx = predict(
+                    st.session_state.model, st.session_state.device,
+                    st.session_state.image_to_display_pil, img_transform, st.session_state.class_indices
                 )
             st.session_state.last_prediction_info = {
                 "image_pil": st.session_state.image_to_display_pil,
                 "image_caption": st.session_state.image_to_display_caption,
-                "class_name": class_name,
-                "confidence": confidence,
-                "predicted_idx": class_idx
+                "predicted_class_display_name": pred_name,
+                "predicted_confidence": pred_conf,
+                "predicted_idx": pred_idx,
+                "ground_truth_class_name_from_folder": None, # Không áp dụng
+                "ground_truth_class_idx": None # Không áp dụng
             }
 
+    # Hiển thị ảnh gốc (nếu có)
     if st.session_state.get('image_to_display_pil') is not None:
         st.image(st.session_state.image_to_display_pil, caption=st.session_state.get('image_to_display_caption',"Ảnh đã chọn"), width=300)
-    elif prediction_mode == "Tải Ảnh Lên":
-        st.info("Vui lòng tải ảnh lên.")
+    elif prediction_mode == "Tải Ảnh Lên": # Chỉ hiển thị thông báo này nếu chưa có ảnh và đang ở mode Tải Lên
+        st.info("Vui lòng tải ảnh lên và nhấn nút 'Thực Hiện Dự Đoán & Hiện Grad-CAM'.")
     
     # --- Phần hiển thị kết quả và Grad-CAM ---
     last_prediction_info = st.session_state.get('last_prediction_info', None)
 
     if last_prediction_info and last_prediction_info.get("image_pil") is not None:
         st.markdown("---")
-        
-        # Thông tin dự đoán hiển thị ở trên
-        st.subheader("Kết Quả Dự Đoán:")
-        # Các dòng hiển thị "Tên Lớp Mục Tiêu" đã được di chuyển xuống phần Grad-CAM để đảm bảo tính chính xác
-        st.markdown(f"**Lớp Dự Đoán:** `{last_prediction_info['class_name']}` (Index: {last_prediction_info['predicted_idx']})")
-        st.markdown(f"**Độ Tin Cậy:** `{last_prediction_info['confidence']:.4f}`")
 
-        st.subheader("🔥 Grad-CAM Visualization")
+        # --- LẤY INPUT VÀ XÁC ĐỊNH LỚP MỤC TIÊU CHO GRAD-CAM ---
         pil_image_for_gradcam = last_prediction_info["image_pil"]
-        predicted_idx_for_gradcam = last_prediction_info["predicted_idx"]
-        predicted_class_name_display_gradcam = last_prediction_info["class_name"]
+        predicted_idx = last_prediction_info["predicted_idx"]
+        predicted_class_display_name = last_prediction_info["predicted_class_display_name"]
         
-        target_category_key = f"target_category_gradcam_input_for_{id(pil_image_for_gradcam)}_{predicted_idx_for_gradcam}"
-        current_input_value_for_gradcam = st.session_state.get(target_category_key, str(predicted_idx_for_gradcam))
+        grad_cam_target_source_options = {}
+        has_valid_ground_truth = False
 
-        target_category_input_str = st.text_input( # Đổi tên biến output của text_input
-            f"Index Lớp Mục Tiêu cho Grad-CAM (mặc định: lớp dự đoán - '{predicted_class_name_display_gradcam}' (Index: {predicted_idx_for_gradcam}))",
-            key=target_category_key,
-            value=current_input_value_for_gradcam 
+        # 1. Tùy chọn: Lớp thực tế từ Dataset (nếu có và hợp lệ)
+        gt_idx_from_data = last_prediction_info.get("ground_truth_class_idx")
+        if gt_idx_from_data is not None and (0 <= gt_idx_from_data < st.session_state.num_classes_loaded):
+            gt_name_display = st.session_state.class_indices.get(str(gt_idx_from_data), last_prediction_info.get("ground_truth_class_name_from_folder", f"Index {gt_idx_from_data}"))
+            grad_cam_target_source_options["ground_truth"] = f"Lớp thực tế từ Dataset: '{gt_name_display}' (Index: {gt_idx_from_data})"
+            has_valid_ground_truth = True
+        
+        # 2. Tùy chọn: Lớp dự đoán bởi mô hình
+        grad_cam_target_source_options["predicted"] = f"Lớp dự đoán: '{predicted_class_display_name}' (Index: {predicted_idx})"
+        
+        # 3. Tùy chọn: Nhập thủ công
+        grad_cam_target_source_options["manual"] = "Nhập thủ công Index lớp"
+
+        # Xác định lựa chọn mặc định và quản lý state cho selectbox
+        grad_cam_source_key = f"grad_cam_source_for_{id(pil_image_for_gradcam)}"
+        default_source_key = "predicted"
+        if has_valid_ground_truth: # Ưu tiên ground truth nếu có
+            default_source_key = "ground_truth"
+        
+        current_source_selection = st.session_state.get(grad_cam_source_key, default_source_key)
+        # Đảm bảo lựa chọn hiện tại vẫn hợp lệ (ví dụ: ground_truth có thể không còn nếu đổi ảnh)
+        if current_source_selection == "ground_truth" and not has_valid_ground_truth:
+            current_source_selection = default_source_key
+        if current_source_selection not in grad_cam_target_source_options:
+            current_source_selection = default_source_key
+            
+        options_keys_list = list(grad_cam_target_source_options.keys())
+        try:
+            current_selection_index = options_keys_list.index(current_source_selection)
+        except ValueError:
+             current_selection_index = options_keys_list.index(default_source_key)
+
+
+        selected_grad_cam_source = st.selectbox(
+            "🎯 **Chọn nguồn cho Lớp Mục Tiêu Grad-CAM:**",
+            options=options_keys_list,
+            format_func=lambda k: grad_cam_target_source_options[k],
+            key=grad_cam_source_key, # Streamlit tự quản lý state qua key
+            index=current_selection_index
         )
         
-        target_category_for_gradcam_generation = predicted_idx_for_gradcam # Giá trị mặc định
-        if target_category_input_str.strip():
-            try:
-                parsed_idx = int(target_category_input_str)
-                target_category_for_gradcam_generation = parsed_idx # Sẽ được validate ngay sau đây
-            except ValueError:
-                st.warning(f"Giá trị '{target_category_input_str}' không hợp lệ cho Target Category. Sử dụng index lớp được dự đoán ({predicted_idx_for_gradcam}).")
-                # target_category_for_gradcam_generation vẫn là predicted_idx_for_gradcam
+        target_category_input_str = "" # Cho trường hợp manual
+        if selected_grad_cam_source == "manual":
+            manual_input_key = f"manual_grad_cam_target_for_{id(pil_image_for_gradcam)}"
+            current_manual_val = st.session_state.get(manual_input_key, str(predicted_idx))
+            target_category_input_str = st.text_input(
+                label="Nhập Index Lớp Mục Tiêu thủ công:",
+                value=current_manual_val, # Giữ lại giá trị đã nhập trước đó cho ảnh này
+                key=manual_input_key # Streamlit tự quản lý state qua key
+            )
+
+        # Xác định target_category_for_gradcam_final dựa trên lựa chọn
+        target_category_for_gradcam_final = predicted_idx # Mặc định fallback
+        error_parsing_manual_input = False
+
+        if selected_grad_cam_source == "ground_truth" and has_valid_ground_truth:
+            target_category_for_gradcam_final = gt_idx_from_data
+        elif selected_grad_cam_source == "predicted":
+            target_category_for_gradcam_final = predicted_idx
+        elif selected_grad_cam_source == "manual":
+            if target_category_input_str.strip():
+                try:
+                    target_category_for_gradcam_final = int(target_category_input_str)
+                except ValueError:
+                    error_parsing_manual_input = True
+                    # Nếu lỗi, sẽ fallback về predicted_idx (đã gán ở trên)
+            # else: input rỗng, fallback về predicted_idx (đã gán ở trên)
+        
+        # Lấy tên hiển thị cho lớp mục tiêu cuối cùng
+        final_target_display_name = str(target_category_for_gradcam_final)
+        if st.session_state.class_indices and str(target_category_for_gradcam_final) in st.session_state.class_indices:
+            final_target_display_name = st.session_state.class_indices[str(target_category_for_gradcam_final)]
+        elif not st.session_state.class_indices:
+            final_target_display_name = f"Index: {target_category_for_gradcam_final}"
+        else: # Có class_indices nhưng index không có tên
+             final_target_display_name = f"(Tên không rõ cho Index: {target_category_for_gradcam_final})"
+
+
+        # --- HIỂN THỊ KẾT QUẢ DỰ ĐOÁN VÀ LỚP MỤC TIÊU ĐÃ CHỌN ---
+        st.subheader("Kết Quả Phân Tích Ảnh:")
+        st.markdown(f"**Lớp Mục Tiêu (cho Grad-CAM):** `{final_target_display_name}` (Index: {target_category_for_gradcam_final})")
+        st.caption(f"Nguồn lựa chọn: {grad_cam_target_source_options[selected_grad_cam_source]}")
+        
+        st.markdown(f"**Lớp Dự Đoán (từ mô hình):** `{last_prediction_info['predicted_class_display_name']}` (Index: {last_prediction_info['predicted_idx']})")
+        st.markdown(f"**Độ Tin Cậy (của lớp dự đoán):** `{last_prediction_info['predicted_confidence']:.4f}`")
+
+        if error_parsing_manual_input:
+            st.warning(f"Giá trị '{target_category_input_str}' nhập thủ công không hợp lệ. Đang sử dụng lớp mục tiêu là lớp dự đoán (Index: {predicted_idx}).")
+
+        # --- GRAD-CAM VISUALIZATION ---
+        st.subheader("🔥 Grad-CAM Visualization")
         
         num_classes_loaded = st.session_state.num_classes_loaded
-        if not (0 <= target_category_for_gradcam_generation < num_classes_loaded):
-            st.error(f"Target Category Index ({target_category_for_gradcam_generation}) nằm ngoài khoảng hợp lệ [0, {num_classes_loaded-1}]. Vui lòng chọn một index hợp lệ.")
+        if not (0 <= target_category_for_gradcam_final < num_classes_loaded):
+            st.error(f"Target Category Index ({target_category_for_gradcam_final}) nằm ngoài khoảng hợp lệ [0, {num_classes_loaded-1}]. Vui lòng chọn một index hợp lệ.")
         else:
-            # Hiển thị Tên Lớp Mục Tiêu cho Grad-CAM đã được xác định và validate
-            target_gradcam_class_name_display = str(target_category_for_gradcam_generation)
-            if st.session_state.class_indices:
-                target_gradcam_class_name_display = st.session_state.class_indices.get(
-                    str(target_category_for_gradcam_generation), 
-                    f"Index: {target_category_for_gradcam_generation}" # Fallback
-                )
-            
-            st.markdown(f"**Tên Lớp Mục Tiêu cho Grad-CAM:** `{target_gradcam_class_name_display}` (Index: {target_category_for_gradcam_generation})")
-
             with st.spinner("Đang tạo Grad-CAM..."):
                 original_img_display, cam_image = generate_gradcam_image(
-                    st.session_state.model,
-                    st.session_state.device,
-                    pil_image_for_gradcam,
-                    target_category_for_gradcam_generation, # Sử dụng index đã validate
+                    st.session_state.model, st.session_state.device,
+                    pil_image_for_gradcam, 
+                    target_category_for_gradcam_final, 
                     st.session_state.class_indices,
                     img_size=224
                 )
 
             if original_img_display is not None and cam_image is not None:
-                # target_gradcam_class_name_display đã được tính ở trên
                 col_img1, col_img2 = st.columns(2)
                 with col_img1:
                     st.image(original_img_display, caption=last_prediction_info.get("image_caption", "Ảnh đã xử lý"), use_container_width=True)
                 with col_img2:
-                    st.image(cam_image, caption=f"Grad-CAM cho lớp: {target_gradcam_class_name_display}", use_container_width=True)
+                    st.image(cam_image, caption=f"Grad-CAM cho lớp: {final_target_display_name}", use_container_width=True)
     
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("Được hỗ trợ bởi Đối tác Lập trình Gemini")
 
 if __name__ == '__main__':
     main_app()
