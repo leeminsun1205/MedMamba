@@ -1,5 +1,5 @@
 # Chạy trong Kaggle Notebook: hiển thị đồ họa inline
-%matplotlib inline
+
 
 import os
 import sys
